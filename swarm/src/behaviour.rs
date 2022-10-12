@@ -221,13 +221,13 @@ pub trait NetworkBehaviour: 'static {
     ) {
     }
 
-    /// Indicates to the behaviour that a new listener was created.
+    /// Informs to the behaviour that a new listener was created.
     fn inject_new_listener(&mut self, _id: ListenerId) {}
 
-    /// Indicates to the behaviour that we have started listening on a new multiaddr.
+    /// Informs to the behaviour that we have started listening on a new multiaddr.
     fn inject_new_listen_addr(&mut self, _id: ListenerId, _addr: &Multiaddr) {}
 
-    /// Indicates to the behaviour that a multiaddr we were listening on has expired,
+    /// Informs to the behaviour that a multiaddr we were listening on has expired,
     /// which means that we are no longer listening in it.
     fn inject_expired_listen_addr(&mut self, _id: ListenerId, _addr: &Multiaddr) {}
 
@@ -238,10 +238,10 @@ pub trait NetworkBehaviour: 'static {
     /// A listener closed.
     fn inject_listener_closed(&mut self, _id: ListenerId, _reason: Result<(), &std::io::Error>) {}
 
-    /// Indicates to the behaviour that we have discovered a new external address for us.
+    /// Informs to the behaviour that we have discovered a new external address for us.
     fn inject_new_external_addr(&mut self, _addr: &Multiaddr) {}
 
-    /// Indicates to the behaviour that an external address was removed.
+    /// Informs to the behaviour that an external address was removed.
     fn inject_expired_external_addr(&mut self, _addr: &Multiaddr) {}
 
     /// Polls for things that swarm should do.
