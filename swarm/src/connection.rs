@@ -26,8 +26,6 @@ pub use error::{
     ConnectionError, PendingConnectionError, PendingInboundConnectionError,
     PendingOutboundConnectionError,
 };
-pub use pool::{ConnectionCounters, ConnectionLimits};
-pub use pool::{EstablishedConnection, PendingConnection};
 
 use crate::handler::ConnectionHandler;
 use crate::upgrade::{InboundUpgradeSend, OutboundUpgradeSend, SendWrapper};
@@ -151,7 +149,8 @@ where
     }
 
     /// Notifies the connection handler of an event.
-    pub fn inject_event(&mut self, event: THandler::InEvent) {
+    pub fn on_behaviour_event(&mut self, event: THandler::InEvent) {
+        #[allow(deprecated)]
         self.handler.inject_event(event);
     }
 
@@ -182,6 +181,7 @@ where
             match requested_substreams.poll_next_unpin(cx) {
                 Poll::Ready(Some(Ok(()))) => continue,
                 Poll::Ready(Some(Err(user_data))) => {
+                    #[allow(deprecated)]
                     handler.inject_dial_upgrade_error(user_data, ConnectionHandlerUpgrErr::Timeout);
                     continue;
                 }
@@ -210,10 +210,12 @@ where
             match negotiating_out.poll_next_unpin(cx) {
                 Poll::Pending | Poll::Ready(None) => {}
                 Poll::Ready(Some((user_data, Ok(upgrade)))) => {
+                    #[allow(deprecated)]
                     handler.inject_fully_negotiated_outbound(upgrade, user_data);
                     continue;
                 }
                 Poll::Ready(Some((user_data, Err(err)))) => {
+                    #[allow(deprecated)]
                     handler.inject_dial_upgrade_error(user_data, err);
                     continue;
                 }
@@ -224,10 +226,12 @@ where
             match negotiating_in.poll_next_unpin(cx) {
                 Poll::Pending | Poll::Ready(None) => {}
                 Poll::Ready(Some((user_data, Ok(upgrade)))) => {
+                    #[allow(deprecated)]
                     handler.inject_fully_negotiated_inbound(upgrade, user_data);
                     continue;
                 }
                 Poll::Ready(Some((user_data, Err(err)))) => {
+                    #[allow(deprecated)]
                     handler.inject_listen_upgrade_error(user_data, err);
                     continue;
                 }
@@ -275,6 +279,7 @@ where
             match muxing.poll_unpin(cx)? {
                 Poll::Pending => {}
                 Poll::Ready(StreamMuxerEvent::AddressChange(address)) => {
+                    #[allow(deprecated)]
                     handler.inject_address_change(&address);
                     return Poll::Ready(Ok(Event::AddressChange(address)));
                 }
@@ -347,7 +352,11 @@ pub struct ConnectionLimit {
 
 impl fmt::Display for ConnectionLimit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}/{}", self.current, self.limit)
+        write!(
+            f,
+            "connection limit exceeded ({}/{})",
+            self.current, self.limit
+        )
     }
 }
 

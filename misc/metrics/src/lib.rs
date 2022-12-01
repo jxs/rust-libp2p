@@ -25,6 +25,8 @@
 //!
 //! See `examples` directory for more.
 
+#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+
 #[cfg(feature = "dcutr")]
 mod dcutr;
 #[cfg(feature = "gossipsub")]
@@ -36,6 +38,7 @@ mod identify;
 mod kad;
 #[cfg(feature = "ping")]
 mod ping;
+mod protocol_stack;
 #[cfg(feature = "relay")]
 mod relay;
 mod swarm;

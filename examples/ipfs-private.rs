@@ -33,7 +33,6 @@
 //! to work, the ipfs node needs to be configured to use gossipsub.
 use async_std::io;
 use futures::{prelude::*, select};
-use libp2p::tcp::GenTcpConfig;
 use libp2p::{
     core::{
         either::EitherTransport, muxing::StreamMuxerBox, transport, transport::upgrade::Version,
@@ -43,10 +42,10 @@ use libp2p::{
     multiaddr::Protocol,
     noise, ping,
     pnet::{PnetConfig, PreSharedKey},
-    swarm::SwarmEvent,
-    tcp::TcpTransport,
+    swarm::{NetworkBehaviour, SwarmEvent},
+    tcp,
     yamux::YamuxConfig,
-    Multiaddr, NetworkBehaviour, PeerId, Swarm, Transport,
+    Multiaddr, PeerId, Swarm, Transport,
 };
 use std::{env, error::Error, fs, path::Path, str::FromStr, time::Duration};
 
@@ -58,7 +57,7 @@ pub fn build_transport(
     let noise_config = noise::NoiseAuthenticated::xx(&key_pair).unwrap();
     let yamux_config = YamuxConfig::default();
 
-    let base_transport = TcpTransport::new(GenTcpConfig::default().nodelay(true));
+    let base_transport = tcp::async_io::Transport::new(tcp::Config::default().nodelay(true));
     let maybe_encrypted = match psk {
         Some(psk) => EitherTransport::Left(
             base_transport.and_then(move |socket, _| PnetConfig::new(psk).handshake(socket)),
@@ -132,7 +131,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
 
     let ipfs_path = get_ipfs_path();
-    println!("using IPFS_PATH {:?}", ipfs_path);
+    println!("using IPFS_PATH {ipfs_path:?}");
     let psk: Option<PreSharedKey> = get_psk(&ipfs_path)?
         .map(|text| PreSharedKey::from_str(&text))
         .transpose()?;
@@ -140,7 +139,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Create a random PeerId
     let local_key = identity::Keypair::generate_ed25519();
     let local_peer_id = PeerId::from(local_key.public());
-    println!("using random peer id: {:?}", local_peer_id);
+    println!("using random peer id: {local_peer_id:?}");
     if let Some(psk) = psk {
         println!("using swarm key with fingerprint: {}", psk.fingerprint());
     }
@@ -203,16 +202,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
             ping: ping::Behaviour::new(ping::Config::new()),
         };
 
-        println!("Subscribing to {:?}", gossipsub_topic);
+        println!("Subscribing to {gossipsub_topic:?}");
         behaviour.gossipsub.subscribe(&gossipsub_topic).unwrap();
-        Swarm::new(transport, behaviour, local_peer_id)
+        Swarm::with_async_std_executor(transport, behaviour, local_peer_id)
     };
 
     // Reach out to other nodes if specified
     for to_dial in std::env::args().skip(1) {
         let addr: Multiaddr = parse_legacy_multiaddr(&to_dial)?;
         swarm.dial(addr)?;
-        println!("Dialed {:?}", to_dial)
+        println!("Dialed {to_dial:?}")
     }
 
     // Read full lines from stdin
@@ -230,16 +229,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     .gossipsub
                     .publish(gossipsub_topic.clone(), line.expect("Stdin not to close").as_bytes())
                 {
-                    println!("Publish error: {:?}", e);
+                    println!("Publish error: {e:?}");
                 }
             },
             event = swarm.select_next_some() => {
                 match event {
                     SwarmEvent::NewListenAddr { address, .. } => {
-                        println!("Listening on {:?}", address);
+                        println!("Listening on {address:?}");
                     }
                     SwarmEvent::Behaviour(MyBehaviourEvent::Identify(event)) => {
-                        println!("identify: {:?}", event);
+                        println!("identify: {event:?}");
                     }
                     SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(GossipsubEvent::Message {
                         propagation_source: peer_id,
@@ -287,7 +286,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                 peer,
                                 result: Result::Err(ping::Failure::Other { error }),
                             } => {
-                                println!("ping: ping::Failure with {}: {}", peer.to_base58(), error);
+                                println!("ping: ping::Failure with {}: {error}", peer.to_base58());
                             }
                         }
                     }

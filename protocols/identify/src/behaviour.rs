@@ -22,9 +22,9 @@ use crate::handler::{self, Proto, Push};
 use crate::protocol::{Info, ReplySubstream, UpgradeError};
 use futures::prelude::*;
 use libp2p_core::{
-    connection::ConnectionId, multiaddr::Protocol, transport::ListenerId, ConnectedPoint,
-    Multiaddr, PeerId, PublicKey,
+    connection::ConnectionId, multiaddr::Protocol, ConnectedPoint, Multiaddr, PeerId, PublicKey,
 };
+use libp2p_swarm::behaviour::{ConnectionClosed, ConnectionEstablished, DialFailure, FromSwarm};
 use libp2p_swarm::{
     dial_opts::DialOpts, AddressScore, ConnectionHandler, ConnectionHandlerUpgrErr, DialError,
     IntoConnectionHandler, NegotiatedSubstream, NetworkBehaviour, NetworkBehaviourAction,
@@ -131,7 +131,7 @@ impl Config {
             initial_delay: Duration::from_millis(500),
             interval: Duration::from_secs(5 * 60),
             push_listen_addr_updates: false,
-            cache_size: 0,
+            cache_size: 100,
         }
     }
 
@@ -206,6 +206,33 @@ impl Behaviour {
             }
         }
     }
+
+    fn on_connection_established(
+        &mut self,
+        ConnectionEstablished {
+            peer_id,
+            connection_id: conn,
+            endpoint,
+            failed_addresses,
+            ..
+        }: ConnectionEstablished,
+    ) {
+        let addr = match endpoint {
+            ConnectedPoint::Dialer { address, .. } => address.clone(),
+            ConnectedPoint::Listener { send_back_addr, .. } => send_back_addr.clone(),
+        };
+
+        self.connected
+            .entry(peer_id)
+            .or_default()
+            .insert(conn, addr);
+
+        if let Some(entry) = self.discovered_peers.get_mut(&peer_id) {
+            for addr in failed_addresses {
+                entry.remove(addr);
+            }
+        }
+    }
 }
 
 impl NetworkBehaviour for Behaviour {
@@ -216,84 +243,7 @@ impl NetworkBehaviour for Behaviour {
         Proto::new(self.config.initial_delay, self.config.interval)
     }
 
-    fn inject_connection_established(
-        &mut self,
-        peer_id: &PeerId,
-        conn: &ConnectionId,
-        endpoint: &ConnectedPoint,
-        failed_addresses: Option<&Vec<Multiaddr>>,
-        _other_established: usize,
-    ) {
-        let addr = match endpoint {
-            ConnectedPoint::Dialer { address, .. } => address.clone(),
-            ConnectedPoint::Listener { send_back_addr, .. } => send_back_addr.clone(),
-        };
-
-        self.connected
-            .entry(*peer_id)
-            .or_default()
-            .insert(*conn, addr);
-
-        if let Some(entry) = self.discovered_peers.get_mut(peer_id) {
-            for addr in failed_addresses
-                .into_iter()
-                .flat_map(|addresses| addresses.iter())
-            {
-                entry.remove(addr);
-            }
-        }
-    }
-
-    fn inject_connection_closed(
-        &mut self,
-        peer_id: &PeerId,
-        conn: &ConnectionId,
-        _: &ConnectedPoint,
-        _: <Self::ConnectionHandler as IntoConnectionHandler>::Handler,
-        remaining_established: usize,
-    ) {
-        if remaining_established == 0 {
-            self.connected.remove(peer_id);
-            self.pending_push.remove(peer_id);
-        } else if let Some(addrs) = self.connected.get_mut(peer_id) {
-            addrs.remove(conn);
-        }
-    }
-
-    fn inject_dial_failure(
-        &mut self,
-        peer_id: Option<PeerId>,
-        _: Self::ConnectionHandler,
-        error: &DialError,
-    ) {
-        if let Some(peer_id) = peer_id {
-            if !self.connected.contains_key(&peer_id) {
-                self.pending_push.remove(&peer_id);
-            }
-        }
-
-        if let Some(entry) = peer_id.and_then(|id| self.discovered_peers.get_mut(&id)) {
-            if let DialError::Transport(errors) = error {
-                for (addr, _error) in errors {
-                    entry.remove(addr);
-                }
-            }
-        }
-    }
-
-    fn inject_new_listen_addr(&mut self, _id: ListenerId, _addr: &Multiaddr) {
-        if self.config.push_listen_addr_updates {
-            self.pending_push.extend(self.connected.keys());
-        }
-    }
-
-    fn inject_expired_listen_addr(&mut self, _id: ListenerId, _addr: &Multiaddr) {
-        if self.config.push_listen_addr_updates {
-            self.pending_push.extend(self.connected.keys());
-        }
-    }
-
-    fn inject_event(
+    fn on_connection_handler_event(
         &mut self,
         peer_id: PeerId,
         connection: ConnectionId,
@@ -333,8 +283,9 @@ impl NetworkBehaviour for Behaviour {
                     .get(&peer_id)
                     .and_then(|addrs| addrs.get(&connection))
                     .expect(
-                        "`inject_event` is only called with an established connection \
-                             and `inject_connection_established` ensures there is an entry; qed",
+                        "`on_connection_handler_event` is only called \
+                        with an established connection and calling `NetworkBehaviour::on_event` \
+                        with `FromSwarm::ConnectionEstablished ensures there is an entry; qed",
                     );
                 self.pending_replies.push_back(Reply::Queued {
                     peer: peer_id,
@@ -452,6 +403,59 @@ impl NetworkBehaviour for Behaviour {
     fn addresses_of_peer(&mut self, peer: &PeerId) -> Vec<Multiaddr> {
         self.discovered_peers.get(peer)
     }
+
+    fn on_swarm_event(&mut self, event: FromSwarm<Self::ConnectionHandler>) {
+        match event {
+            FromSwarm::ConnectionEstablished(connection_established) => {
+                self.on_connection_established(connection_established)
+            }
+            FromSwarm::ConnectionClosed(ConnectionClosed {
+                peer_id,
+                connection_id,
+                remaining_established,
+                ..
+            }) => {
+                if remaining_established == 0 {
+                    self.connected.remove(&peer_id);
+                    self.pending_push.remove(&peer_id);
+                } else if let Some(addrs) = self.connected.get_mut(&peer_id) {
+                    addrs.remove(&connection_id);
+                }
+            }
+            FromSwarm::DialFailure(DialFailure { peer_id, error, .. }) => {
+                if let Some(peer_id) = peer_id {
+                    if !self.connected.contains_key(&peer_id) {
+                        self.pending_push.remove(&peer_id);
+                    }
+                }
+
+                if let Some(entry) = peer_id.and_then(|id| self.discovered_peers.get_mut(&id)) {
+                    if let DialError::Transport(errors) = error {
+                        for (addr, _error) in errors {
+                            entry.remove(addr);
+                        }
+                    }
+                }
+            }
+            FromSwarm::NewListenAddr(_) => {
+                if self.config.push_listen_addr_updates {
+                    self.pending_push.extend(self.connected.keys());
+                }
+            }
+            FromSwarm::ExpiredListenAddr(_) => {
+                if self.config.push_listen_addr_updates {
+                    self.pending_push.extend(self.connected.keys());
+                }
+            }
+            FromSwarm::AddressChange(_)
+            | FromSwarm::ListenFailure(_)
+            | FromSwarm::NewListener(_)
+            | FromSwarm::ListenerError(_)
+            | FromSwarm::ListenerClosed(_)
+            | FromSwarm::NewExternalAddr(_)
+            | FromSwarm::ExpiredExternalAddr(_) => {}
+        }
+    }
 }
 
 /// Event emitted  by the `Identify` behaviour.
@@ -555,7 +559,7 @@ mod tests {
     use futures::pin_mut;
     use libp2p::mplex::MplexConfig;
     use libp2p::noise;
-    use libp2p::tcp::{GenTcpConfig, TcpTransport};
+    use libp2p::tcp;
     use libp2p_core::{identity, muxing::StreamMuxerBox, transport, upgrade, PeerId, Transport};
     use libp2p_swarm::{Swarm, SwarmEvent};
     use std::time::Duration;
@@ -569,7 +573,7 @@ mod tests {
             .into_authentic(&id_keys)
             .unwrap();
         let pubkey = id_keys.public();
-        let transport = TcpTransport::new(GenTcpConfig::default().nodelay(true))
+        let transport = tcp::async_io::Transport::new(tcp::Config::default().nodelay(true))
             .upgrade(upgrade::Version::V1)
             .authenticate(noise::NoiseConfig::xx(noise_keys).into_authenticated())
             .multiplex(MplexConfig::new())
@@ -584,7 +588,7 @@ mod tests {
             let protocol = Behaviour::new(
                 Config::new("a".to_string(), pubkey.clone()).with_agent_version("b".to_string()),
             );
-            let swarm = Swarm::new(transport, protocol, pubkey.to_peer_id());
+            let swarm = Swarm::with_async_std_executor(transport, protocol, pubkey.to_peer_id());
             (swarm, pubkey)
         };
 
@@ -593,7 +597,7 @@ mod tests {
             let protocol = Behaviour::new(
                 Config::new("c".to_string(), pubkey.clone()).with_agent_version("d".to_string()),
             );
-            let swarm = Swarm::new(transport, protocol, pubkey.to_peer_id());
+            let swarm = Swarm::with_async_std_executor(transport, protocol, pubkey.to_peer_id());
             (swarm, pubkey)
         };
 
@@ -661,7 +665,7 @@ mod tests {
         let (mut swarm1, pubkey1) = {
             let (pubkey, transport) = transport();
             let protocol = Behaviour::new(Config::new("a".to_string(), pubkey.clone()));
-            let swarm = Swarm::new(transport, protocol, pubkey.to_peer_id());
+            let swarm = Swarm::with_async_std_executor(transport, protocol, pubkey.to_peer_id());
             (swarm, pubkey)
         };
 
@@ -670,7 +674,7 @@ mod tests {
             let protocol = Behaviour::new(
                 Config::new("a".to_string(), pubkey.clone()).with_agent_version("b".to_string()),
             );
-            let swarm = Swarm::new(transport, protocol, pubkey.to_peer_id());
+            let swarm = Swarm::with_async_std_executor(transport, protocol, pubkey.to_peer_id());
             (swarm, pubkey)
         };
 
@@ -742,18 +746,16 @@ mod tests {
                     .with_initial_delay(Duration::from_secs(10)),
             );
 
-            Swarm::new(transport, protocol, pubkey.to_peer_id())
+            Swarm::with_async_std_executor(transport, protocol, pubkey.to_peer_id())
         };
 
         let mut swarm2 = {
             let (pubkey, transport) = transport();
             let protocol = Behaviour::new(
-                Config::new("a".to_string(), pubkey.clone())
-                    .with_cache_size(100)
-                    .with_agent_version("b".to_string()),
+                Config::new("a".to_string(), pubkey.clone()).with_agent_version("b".to_string()),
             );
 
-            Swarm::new(transport, protocol, pubkey.to_peer_id())
+            Swarm::with_async_std_executor(transport, protocol, pubkey.to_peer_id())
         };
 
         let swarm1_peer_id = *swarm1.local_peer_id();
