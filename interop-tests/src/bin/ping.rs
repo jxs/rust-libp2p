@@ -177,7 +177,7 @@ async fn main() -> Result<()> {
     let mut conn = client.get_async_connection().await?;
 
     log::info!("Running ping test: {}", swarm.local_peer_id());
-    env_logger::Builder::from_env(Env::default().default_filter_or("info"))
+    env_logger::Builder::from_env(Env::default().default_filter_or("ping,webrtc=debug"))
         .target(Target::Stdout)
         .init();
 
