@@ -20,6 +20,7 @@
 
 #![doc = include_str!("../README.md")]
 
+use env_logger::Env;
 use futures::prelude::*;
 use libp2p::core::upgrade::Version;
 use libp2p::{
@@ -31,6 +32,8 @@ use std::error::Error;
 
 #[async_std::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    env_logger::Builder::from_env(Env::default().default_filter_or("libp2p=debug")).init();
+
     let local_key = identity::Keypair::generate_ed25519();
     let local_peer_id = PeerId::from(local_key.public());
     println!("Local peer id: {local_peer_id:?}");
