@@ -1,4 +1,4 @@
-## 0.52.3 - unreleased
+## 0.52.3
 
 - Add `libp2p-quic` stable release.
 
@@ -17,6 +17,7 @@
   See [PR 4281].
 
 [PR 4188]: https://github.com/libp2p/rust-libp2p/pull/4188
+[PR 4156]: https://github.com/libp2p/rust-libp2p/pull/4156
 [PR 4217]: https://github.com/libp2p/rust-libp2p/pull/4217
 [PR 4156]: https://github.com/libp2p/rust-libp2p/pull/4156
 [PR 4281]: https://github.com/libp2p/rust-libp2p/pull/4281

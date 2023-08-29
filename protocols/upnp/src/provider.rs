@@ -20,10 +20,7 @@
 
 use std::{error::Error, fmt, net};
 
-use crate::{
-    behaviour::{GatewayEvent, GatewayRequest},
-    Config,
-};
+use crate::behaviour::{GatewayEvent, GatewayRequest};
 use async_trait::async_trait;
 use futures::channel::mpsc::{Receiver, Sender};
 
@@ -102,12 +99,12 @@ impl Gateway {}
 /// Abstraction to allow for compatibility with various async runtimes.
 #[async_trait]
 pub trait Provider {
-    async fn search_gateway(config: Config) -> Result<Gateway, Box<dyn Error>>;
+    async fn search_gateway() -> Result<Gateway, Box<dyn Error>>;
 }
 
 macro_rules! impl_provider {
     ($impl:ident, $executor: ident, $gateway:ident, $protocol: ident) => {
-        use super::{Config, Gateway, IpAddr};
+        use super::{Gateway, IpAddr};
         use crate::behaviour::{GatewayEvent, GatewayRequest};
 
         use async_trait::async_trait;
@@ -117,13 +114,8 @@ macro_rules! impl_provider {
 
         #[async_trait]
         impl super::Provider for $impl {
-            async fn search_gateway(config: Config) -> Result<super::Gateway, Box<dyn Error>> {
-                let options = SearchOptions {
-                    bind_addr: config.bind_addr,
-                    broadcast_address: config.broadcast_addr,
-                    timeout: config.timeout,
-                };
-                let gateway = $gateway::search_gateway(options).await?;
+            async fn search_gateway() -> Result<super::Gateway, Box<dyn Error>> {
+                let gateway = $gateway::search_gateway(SearchOptions::default()).await?;
                 let external_addr = gateway.get_external_ip().await?;
 
                 let (events_sender, mut task_receiver) = mpsc::channel(10);
@@ -132,10 +124,11 @@ macro_rules! impl_provider {
                 $executor::spawn(async move {
                     loop {
                         // The task sender has dropped so we can return.
-                        let Some(req) = task_receiver.next().await else { return; };
+                        let Some(req) = task_receiver.next().await else {
+                            return;
+                        };
                         let event = match req {
                             GatewayRequest::AddMapping { mapping, duration } => {
-                                let duration = duration.unwrap_or(0);
                                 let gateway = gateway.clone();
                                 match gateway
                                     .add_port(
