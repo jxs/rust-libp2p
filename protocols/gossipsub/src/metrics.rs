@@ -306,20 +306,12 @@ impl Metrics {
         };
         let messages_added_to_queue = {
             let metric = Counter::default();
-            registry.register(
-                "messages_added_to_queue",
-                "TODO",
-                metric.clone(),
-            );
+            registry.register("messages_added_to_queue", "TODO", metric.clone());
             metric
         };
         let messages_removed_from_queue = {
             let metric = Counter::default();
-            registry.register(
-                "messages_removed_from_queue",
-                "TODO",
-                metric.clone(),
-            );
+            registry.register("messages_removed_from_queue", "TODO", metric.clone());
             metric
         };
 

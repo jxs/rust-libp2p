@@ -11,11 +11,15 @@ keywords = ["networking"]
 categories = ["asynchronous"]
 
 [dependencies]
-asynchronous-codec = { version = "0.6" }
+asynchronous-codec = { workspace = true }
 bytes = { version = "1" }
 thiserror = "1.0"
-unsigned-varint = { version = "0.7", features = ["asynchronous_codec"] }
+unsigned-varint = { workspace = true, features = ["std"] }
 quick-protobuf = "0.8"
+
+[dev-dependencies]
+futures = "0.3.28"
+quickcheck = { workspace = true }
 
 # Passing arguments to the docsrs builder in order to properly document cfg's.
 # More information: https://docs.rs/about/builds#cross-compiling

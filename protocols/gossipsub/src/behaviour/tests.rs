@@ -32,6 +32,7 @@ use crate::{
 use async_std::net::Ipv4Addr;
 use byteorder::{BigEndian, ByteOrder};
 use libp2p_core::{ConnectedPoint, Endpoint};
+use prometheus_client::metrics::counter::Counter;
 use rand::Rng;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -272,7 +273,12 @@ where
         for connection_id in peer_connections.connections.clone() {
             active_connections = active_connections.checked_sub(1).unwrap();
 
-            let dummy_handler = Handler::new(ProtocolConfig::default(), Duration::ZERO);
+            let dummy_handler = Handler::new(
+                ProtocolConfig::default(),
+                Duration::ZERO,
+                Counter::default(),
+                Counter::default(),
+            );
 
             gs.on_swarm_event(FromSwarm::ConnectionClosed(ConnectionClosed {
                 peer_id: *peer_id,

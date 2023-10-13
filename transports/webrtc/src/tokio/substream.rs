@@ -255,7 +255,6 @@ mod tests {
     use asynchronous_codec::Encoder;
     use bytes::BytesMut;
     use quick_protobuf::{MessageWrite, Writer};
-    use unsigned_varint::codec::UviBytes;
 
     #[test]
     fn max_data_len() {
@@ -274,9 +273,10 @@ mod tests {
             .expect("Encoding to succeed");
         assert_eq!(encoded_msg.len(), message.len() + PROTO_OVERHEAD);
 
-        let mut uvi = UviBytes::default();
         let mut dst = BytesMut::new();
-        uvi.encode(encoded_msg.as_slice(), &mut dst).unwrap();
+        let mut codec: quick_protobuf_codec::Codec<Message, Message> =
+            quick_protobuf_codec::Codec::new(MAX_MSG_LEN - VARINT_LEN);
+        codec.encode(protobuf, &mut dst).unwrap();
 
         // Ensure the varint prefixed and protobuf encoded largest message is no longer than the
         // maximum limit specified in the libp2p WebRTC specification.
