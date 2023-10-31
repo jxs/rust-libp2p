@@ -25,6 +25,7 @@ use std::{
     collections::{BTreeSet, HashMap},
     fmt,
     net::IpAddr,
+    sync::Arc,
     task::{Context, Poll},
     time::Duration,
 };
@@ -2920,11 +2921,7 @@ where
             return Ok(vec![rpc]);
         }
 
-        let new_rpc = proto::RPC {
-            subscriptions: Vec::new(),
-            publish: Vec::new(),
-            control: None,
-        };
+        let new_rpc = proto::RPCInner::default();
 
         let mut rpc_list = vec![new_rpc.clone()];
 
@@ -3031,7 +3028,12 @@ where
             }
         }
 
-        Ok(rpc_list)
+        Ok(rpc_list
+            .into_iter()
+            .map(|rpc| proto::RPC {
+                inner: Arc::new(rpc),
+            })
+            .collect())
     }
 
     fn on_connection_established(

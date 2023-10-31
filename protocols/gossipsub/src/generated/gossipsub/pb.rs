@@ -9,19 +9,52 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 
 
+use std::ops::Deref;
+use std::sync::Arc;
+
 use quick_protobuf::{MessageInfo, MessageRead, MessageWrite, BytesReader, Writer, WriterBackend, Result};
 use quick_protobuf::sizeofs::*;
 use super::super::*;
 
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Debug, Default, PartialEq, Clone)]
+#[derive(Debug, Default, PartialEq)]
 pub struct RPC {
+    pub(crate) inner: Arc<RPCInner>,
+}
+
+impl Clone for RPC {
+    fn clone(&self) -> Self {
+        Self { inner: self.inner.clone() }
+    }
+}
+
+impl Deref for RPC {
+    type Target=RPCInner;
+
+    fn deref(&self) -> &Self::Target {
+        self.inner.as_ref()
+    }
+}
+
+impl MessageWrite for RPC {
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        self.inner.write_message(w)
+    }
+
+    fn get_size(&self) -> usize {
+        self.inner.get_size()
+    }
+}
+
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Debug, Default, PartialEq, Clone)]
+pub struct RPCInner {
     pub subscriptions: Vec<gossipsub::pb::mod_RPC::SubOpts>,
     pub publish: Vec<gossipsub::pb::Message>,
     pub control: Option<gossipsub::pb::ControlMessage>,
 }
 
-impl<'a> MessageRead<'a> for RPC {
+impl<'a> MessageRead<'a> for RPCInner {
     fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
         let mut msg = Self::default();
         while !r.is_eof() {
@@ -37,7 +70,7 @@ impl<'a> MessageRead<'a> for RPC {
     }
 }
 
-impl MessageWrite for RPC {
+impl MessageWrite for RPCInner {
     fn get_size(&self) -> usize {
         0
         + self.subscriptions.iter().map(|s| 1 + sizeof_len((s).get_size())).sum::<usize>()
