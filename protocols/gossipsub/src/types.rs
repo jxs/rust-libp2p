@@ -24,8 +24,8 @@ use libp2p_identity::PeerId;
 use libp2p_swarm::ConnectionId;
 use prometheus_client::encoding::EncodeLabelValue;
 use quick_protobuf::MessageWrite;
-use std::fmt;
 use std::fmt::Debug;
+use std::{fmt, sync::Arc};
 
 use crate::rpc_proto::proto;
 #[cfg(feature = "serde")]
@@ -341,7 +341,7 @@ impl From<Rpc> for proto::RPC {
             }
         }
 
-        proto::RPC {
+        let inner = proto::RPCInner {
             subscriptions,
             publish,
             control: if empty_control_msg {
@@ -349,6 +349,9 @@ impl From<Rpc> for proto::RPC {
             } else {
                 Some(control)
             },
+        };
+        Self {
+            inner: Arc::new(inner),
         }
     }
 }
