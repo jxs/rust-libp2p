@@ -3317,16 +3317,7 @@ where
         Ok(Handler::new(
             self.config.protocol_config(),
             self.config.idle_timeout(),
-            self.metrics
-                .as_ref()
-                .expect("to be enabled")
-                .messages_added_to_queue
-                .clone(),
-            self.metrics
-                .as_ref()
-                .expect("to be enabled")
-                .messages_removed_from_queue
-                .clone(),
+            self.metrics.clone(),
         ))
     }
 
@@ -3340,16 +3331,7 @@ where
         Ok(Handler::new(
             self.config.protocol_config(),
             self.config.idle_timeout(),
-            self.metrics
-                .as_ref()
-                .expect("to be enabled")
-                .messages_added_to_queue
-                .clone(),
-            self.metrics
-                .as_ref()
-                .expect("to be enabled")
-                .messages_removed_from_queue
-                .clone(),
+            self.metrics.clone(),
         ))
     }
 

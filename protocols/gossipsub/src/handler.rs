@@ -18,6 +18,7 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+use crate::metrics::Metrics;
 use crate::protocol::{GossipsubCodec, ProtocolConfig};
 use crate::rpc_proto::proto;
 use crate::types::{PeerKind, RawMessage, Rpc};
@@ -34,8 +35,9 @@ use libp2p_swarm::handler::{
     SubstreamProtocol,
 };
 use libp2p_swarm::Stream;
-use prometheus_client::metrics::counter::Counter;
+use quick_protobuf::MessageWrite;
 use smallvec::SmallVec;
+use std::sync::atomic::Ordering;
 use std::{
     pin::Pin,
     task::{Context, Poll},
@@ -127,8 +129,8 @@ pub struct EnabledHandler {
     /// decisions about the keep alive state for this connection.
     in_mesh: bool,
 
-    messages_added_to_queue: Counter,
-    messages_removed_from_queue: Counter,
+    /// TODO.
+    metrics: Option<Metrics>,
 }
 
 pub enum DisabledHandler {
@@ -171,8 +173,7 @@ impl Handler {
     pub fn new(
         protocol_config: ProtocolConfig,
         idle_timeout: Duration,
-        messages_added_to_queue: Counter,
-        messages_removed_from_queue: Counter,
+        metrics: Option<Metrics>,
     ) -> Self {
         Handler::Enabled(EnabledHandler {
             listen_protocol: protocol_config,
@@ -187,8 +188,7 @@ impl Handler {
             last_io_activity: Instant::now(),
             in_mesh: false,
             idle_timeout,
-            messages_added_to_queue,
-            messages_removed_from_queue,
+            metrics,
         })
     }
 }
@@ -333,7 +333,9 @@ impl EnabledHandler {
                 // outbound idle state
                 Some(OutboundSubstreamState::WaitingOutput(substream)) => {
                     if let Some(message) = self.send_queue.pop() {
-                        self.messages_removed_from_queue.inc();
+                        if let Some(ref metrics) = self.metrics {
+                            metrics.messages_removed_from_queue.inc();
+                        }
                         self.send_queue.shrink_to_fit();
                         self.outbound_substream =
                             Some(OutboundSubstreamState::PendingSend(substream, message));
@@ -429,7 +431,15 @@ impl ConnectionHandler for Handler {
             Handler::Enabled(handler) => match message {
                 HandlerIn::Message(m) => {
                     handler.send_queue.push(m);
-                    handler.messages_added_to_queue.inc();
+                    if let Some(ref metrics) = handler.metrics {
+                        let gauge = metrics.messages_queue_bytes.inner();
+                        let queue_size = handler
+                            .send_queue
+                            .iter()
+                            .fold(0, |acc, m| acc + m.get_size());
+                        gauge.store(queue_size as i64, Ordering::SeqCst);
+                        metrics.messages_added_to_queue.inc();
+                    }
                 }
                 HandlerIn::JoinedMesh => {
                     handler.in_mesh = true;

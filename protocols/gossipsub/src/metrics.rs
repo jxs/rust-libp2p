@@ -99,6 +99,7 @@ impl Default for Config {
 type EverSubscribed = bool;
 
 /// A collection of metrics used throughout the Gossipsub behaviour.
+#[derive(Clone)]
 pub(crate) struct Metrics {
     /* Configuration parameters */
     /// Maximum number of topics for which we store metrics. This helps keep the metrics bounded.
@@ -177,6 +178,7 @@ pub(crate) struct Metrics {
 
     pub messages_added_to_queue: Counter,
     pub messages_removed_from_queue: Counter,
+    pub messages_queue_bytes: Gauge,
 }
 
 impl Metrics {
@@ -306,20 +308,17 @@ impl Metrics {
         };
         let messages_added_to_queue = {
             let metric = Counter::default();
-            registry.register(
-                "messages_added_to_queue",
-                "TODO",
-                metric.clone(),
-            );
+            registry.register("messages_added_to_queue", "TODO", metric.clone());
             metric
         };
         let messages_removed_from_queue = {
             let metric = Counter::default();
-            registry.register(
-                "messages_removed_from_queue",
-                "TODO",
-                metric.clone(),
-            );
+            registry.register("messages_removed_from_queue", "TODO", metric.clone());
+            metric
+        };
+        let messages_queue_bytes = {
+            let metric = Gauge::default();
+            registry.register("messages_queue_bytes", "TODO", metric.clone());
             metric
         };
 
@@ -350,6 +349,7 @@ impl Metrics {
             topic_iwant_msgs,
             messages_added_to_queue,
             messages_removed_from_queue,
+            messages_queue_bytes,
         }
     }
 
