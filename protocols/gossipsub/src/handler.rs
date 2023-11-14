@@ -42,6 +42,10 @@ use std::{
 };
 use void::Void;
 
+/// Number of messages in the send queue after which we report the peer back
+/// to the application.
+pub const SEND_QUEUE_DROP_LIMIT: usize = 16;
+
 /// The event emitted by the Handler. This informs the behaviour of various events created
 /// by the handler.
 #[derive(Debug)]
@@ -58,6 +62,9 @@ pub enum HandlerEvent {
     /// An inbound or outbound substream has been established with the peer and this informs over
     /// which protocol. This message only occurs once per connection.
     PeerKind(PeerKind),
+    /// The peer is very slow to respond to messages, so report it back to the application
+    /// which should ideally ban the peer.
+    ReportPeer,
 }
 
 /// A message sent from the behaviour to the handler.
@@ -236,6 +243,12 @@ impl EnabledHandler {
                     HandlerEvent::PeerKind(peer_kind.clone()),
                 ));
             }
+        }
+
+        if self.send_queue.len() > SEND_QUEUE_DROP_LIMIT {
+            return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
+                HandlerEvent::ReportPeer,
+            ));
         }
 
         // determine if we need to create the outbound stream

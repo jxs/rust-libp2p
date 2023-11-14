@@ -144,7 +144,10 @@ pub enum Event {
         topic: TopicHash,
     },
     /// A peer that does not support gossipsub has connected.
-    GossipsubNotSupported { peer_id: PeerId },
+    GossipsubNotSupported {
+        peer_id: PeerId,
+    },
+    ReportPeer(PeerId),
 }
 
 /// A data structure for storing configuration for publishing messages. See [`MessageAuthenticity`]
@@ -3453,6 +3456,12 @@ where
                 if !prune_msgs.is_empty() {
                     self.handle_prune(&propagation_source, prune_msgs);
                 }
+            }
+            HandlerEvent::ReportPeer => {
+                self.events
+                    .push_back(ToSwarm::GenerateEvent(Event::ReportPeer(
+                        propagation_source,
+                    )));
             }
         }
     }
