@@ -63,7 +63,7 @@ pub enum HandlerEvent {
     /// which protocol. This message only occurs once per connection.
     PeerKind(PeerKind),
     /// The peer is very slow to respond to messages, so report it back to the application
-    /// which should ideally ban the peer.
+    /// which can score down the peer.
     ReportPeer,
 }
 
@@ -246,6 +246,7 @@ impl EnabledHandler {
         }
 
         if self.send_queue.len() > SEND_QUEUE_DROP_LIMIT {
+            self.send_queue.clear();
             return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
                 HandlerEvent::ReportPeer,
             ));
