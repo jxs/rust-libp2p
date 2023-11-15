@@ -44,7 +44,7 @@ use void::Void;
 
 /// Number of messages in the send queue after which we report the peer back
 /// to the application.
-pub const SEND_QUEUE_DROP_LIMIT: usize = 16;
+pub const SEND_QUEUE_DROP_LIMIT: usize = 100;
 
 /// The event emitted by the Handler. This informs the behaviour of various events created
 /// by the handler.
