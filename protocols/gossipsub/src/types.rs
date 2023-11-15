@@ -254,6 +254,18 @@ impl RpcOut {
     pub fn into_protobuf(self) -> proto::RPC {
         self.into()
     }
+
+    /// The priority of the `RpcOut` variant used in the `ConnectionHandler` channel queue,
+    /// higher priority Rpc's are given preference and read first.
+    pub(crate) fn priority(&self) -> usize {
+        match self {
+            RpcOut::Publish(_) => 2,
+            RpcOut::Forward(_) => 0,
+            RpcOut::Subscribe(_) => 1,
+            RpcOut::Unsubscribe(_) => 1,
+            RpcOut::Control(_) => 3,
+        }
+    }
 }
 
 impl From<RpcOut> for proto::RPC {

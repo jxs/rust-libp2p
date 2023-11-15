@@ -29,6 +29,7 @@ use std::{
     time::Duration,
 };
 
+use async_priority_channel::Sender;
 use futures::StreamExt;
 use futures_ticker::Ticker;
 use prometheus_client::registry::Registry;
@@ -332,6 +333,9 @@ pub struct Behaviour<D = IdentityTransform, F = AllowAllSubscriptionFilter> {
 
     /// Keep track of a set of internal metrics relating to gossipsub.
     metrics: Option<Metrics>,
+
+    /// Connection handler message queue channels.
+    handler_send_queues: HashMap<PeerId, Sender<RpcOut, usize>>,
 }
 
 impl<D, F> Behaviour<D, F>
@@ -471,6 +475,7 @@ where
             config,
             subscription_filter,
             data_transform,
+            handler_send_queues: Default::default(),
         })
     }
 }
@@ -2735,18 +2740,32 @@ where
     /// Send a [`RpcOut`] message to a peer. This will wrap the message in an arc if it
     /// is not already an arc.
     fn send_message(&mut self, peer_id: PeerId, rpc: RpcOut) {
+        let sender = match self.handler_send_queues.get(&peer_id) {
+            Some(sender) => sender,
+            None => {
+                tracing::debug!(peer=%peer_id, "Dropping message to peer, peer doesn't exist in the list");
+                return;
+            }
+        };
+
+        let priority = rpc.priority();
+        if let Err(_) = sender.try_send(rpc.clone(), priority) {
+            tracing::debug!(peer=%peer_id, "Dropping message and disabling peer, peer's queue is full");
+            self.events.push_back(ToSwarm::NotifyHandler {
+                peer_id,
+                event: HandlerIn::SlowPeer,
+                handler: NotifyHandler::Any,
+            });
+            self.handler_send_queues.remove(&peer_id);
+            return;
+        }
+
         if let Some(m) = self.metrics.as_mut() {
             if let RpcOut::Publish(ref message) | RpcOut::Forward(ref message) = rpc {
                 // register bytes sent on the internal metrics.
                 m.msg_sent(&message.topic, message.raw_protobuf_len());
             }
         }
-
-        self.events.push_back(ToSwarm::NotifyHandler {
-            peer_id,
-            event: HandlerIn::Message(rpc),
-            handler: NotifyHandler::Any,
-        });
     }
 
     fn on_connection_established(
@@ -3002,21 +3021,27 @@ where
     fn handle_established_inbound_connection(
         &mut self,
         _: ConnectionId,
-        _: PeerId,
+        peer_id: PeerId,
         _: &Multiaddr,
         _: &Multiaddr,
     ) -> Result<THandler<Self>, ConnectionDenied> {
-        Ok(Handler::new(self.config.protocol_config()))
+        let (sender, receiver) =
+            async_priority_channel::bounded(self.config.connection_handler_queue_len());
+        self.handler_send_queues.insert(peer_id, sender);
+        Ok(Handler::new(self.config.protocol_config(), receiver))
     }
 
     fn handle_established_outbound_connection(
         &mut self,
         _: ConnectionId,
-        _: PeerId,
+        peer_id: PeerId,
         _: &Multiaddr,
         _: Endpoint,
     ) -> Result<THandler<Self>, ConnectionDenied> {
-        Ok(Handler::new(self.config.protocol_config()))
+        let (sender, receiver) =
+            async_priority_channel::bounded(self.config.connection_handler_queue_len());
+        self.handler_send_queues.insert(peer_id, sender);
+        Ok(Handler::new(self.config.protocol_config(), receiver))
     }
 
     fn on_connection_handler_event(
