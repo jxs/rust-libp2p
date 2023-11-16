@@ -821,6 +821,11 @@ impl ConfigBuilder {
         self
     }
 
+    pub fn handler_max_queue(&mut self, len: usize) -> &mut Self {
+        self.config.protocol.max_queue_len = len;
+        self
+    }
+
     /// Published message ids time cache duration. The default is 10 seconds.
     pub fn published_message_ids_cache_time(
         &mut self,

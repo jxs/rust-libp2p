@@ -64,6 +64,9 @@ pub struct ProtocolConfig {
     pub(crate) max_transmit_size: usize,
     /// Determines the level of validation to be done on incoming messages.
     pub(crate) validation_mode: ValidationMode,
+    /// /// Number of messages in the `ConnectionHandler` send queue after which
+    /// we report the peer back to the application.
+    pub(crate) max_queue_len: usize,
 }
 
 impl Default for ProtocolConfig {
@@ -72,6 +75,7 @@ impl Default for ProtocolConfig {
             max_transmit_size: 65536,
             validation_mode: ValidationMode::Strict,
             protocol_ids: vec![GOSSIPSUB_1_1_0_PROTOCOL, GOSSIPSUB_1_0_0_PROTOCOL],
+            max_queue_len: 1000,
         }
     }
 }

@@ -42,10 +42,6 @@ use std::{
 };
 use void::Void;
 
-/// Number of messages in the send queue after which we report the peer back
-/// to the application.
-pub const SEND_QUEUE_DROP_LIMIT: usize = 100;
-
 /// The event emitted by the Handler. This informs the behaviour of various events created
 /// by the handler.
 #[derive(Debug)]
@@ -145,6 +141,9 @@ pub enum DisabledHandler {
     /// The maximum number of inbound or outbound substream attempts have happened and thereby the
     /// handler has been disabled.
     MaxSubstreamAttempts,
+
+    /// Peer is too slow delivering messages.
+    TooSlow { peer_reported: bool },
 }
 
 /// State of the inbound substream, opened either by us or by the remote.
@@ -243,13 +242,6 @@ impl EnabledHandler {
                     HandlerEvent::PeerKind(peer_kind.clone()),
                 ));
             }
-        }
-
-        if self.send_queue.len() > SEND_QUEUE_DROP_LIMIT {
-            self.send_queue.clear();
-            return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
-                HandlerEvent::ReportPeer,
-            ));
         }
 
         // determine if we need to create the outbound stream
@@ -428,15 +420,24 @@ impl ConnectionHandler for Handler {
 
     fn on_behaviour_event(&mut self, message: HandlerIn) {
         match self {
-            Handler::Enabled(handler) => match message {
-                HandlerIn::Message(m) => handler.send_queue.push(m),
-                HandlerIn::JoinedMesh => {
-                    handler.in_mesh = true;
+            Handler::Enabled(handler) => {
+                if handler.send_queue.len() > handler.listen_protocol.max_queue_len {
+                    *self = Handler::Disabled(DisabledHandler::TooSlow {
+                        peer_reported: false,
+                    });
+                    return;
                 }
-                HandlerIn::LeftMesh => {
-                    handler.in_mesh = false;
+
+                match message {
+                    HandlerIn::Message(m) => handler.send_queue.push(m),
+                    HandlerIn::JoinedMesh => {
+                        handler.in_mesh = true;
+                    }
+                    HandlerIn::LeftMesh => {
+                        handler.in_mesh = false;
+                    }
                 }
-            },
+            }
             Handler::Disabled(_) => {
                 log::debug!("Handler is disabled. Dropping message {:?}", message);
             }
@@ -487,7 +488,20 @@ impl ConnectionHandler for Handler {
 
                 Poll::Pending
             }
-            Handler::Disabled(DisabledHandler::MaxSubstreamAttempts) => Poll::Pending,
+            Handler::Disabled(DisabledHandler::TooSlow {
+                peer_reported: false,
+            }) => {
+                *self = Handler::Disabled(DisabledHandler::TooSlow {
+                    peer_reported: true,
+                });
+                Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
+                    HandlerEvent::ReportPeer,
+                ))
+            }
+            Handler::Disabled(DisabledHandler::MaxSubstreamAttempts)
+            | Handler::Disabled(DisabledHandler::TooSlow {
+                peer_reported: true,
+            }) => Poll::Pending,
         }
     }
 
