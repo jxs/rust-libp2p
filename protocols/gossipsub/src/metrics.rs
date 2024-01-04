@@ -23,11 +23,12 @@
 
 use std::collections::HashMap;
 
+use libp2p_identity::PeerId;
 use prometheus_client::encoding::{EncodeLabelSet, EncodeLabelValue};
 use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::family::{Family, MetricConstructor};
 use prometheus_client::metrics::gauge::Gauge;
-use prometheus_client::metrics::histogram::{linear_buckets, Histogram};
+use prometheus_client::metrics::histogram::{exponential_buckets, linear_buckets, Histogram};
 use prometheus_client::registry::Registry;
 
 use crate::topic::TopicHash;
@@ -179,10 +180,10 @@ pub(crate) struct Metrics {
     /// topic. A very high metric might indicate an underperforming network.
     topic_iwant_msgs: Family<TopicHash, Counter>,
 
-    /// The size of the priority queue.
-    priority_queue_size: Histogram,
+    /// The size of the priority queue for each PeerId.
+    priority_queue_size: Family<PeerIdLabel, Histogram, HistBuilder>,
     /// The size of the non-priority queue.
-    non_priority_queue_size: Histogram,
+    non_priority_queue_size: Family<PeerIdLabel, Histogram, HistBuilder>,
 }
 
 impl Metrics {
@@ -321,14 +322,17 @@ impl Metrics {
             metric
         };
 
-        let priority_queue_size = Histogram::new(linear_buckets(0.0, 25.0, 100));
+        let hist_builder = HistBuilder {
+            buckets: exponential_buckets(10.0, 2.0, 10).collect(),
+        };
+        let priority_queue_size = Family::new_with_constructor(hist_builder.clone());
         registry.register(
             "priority_queue_size",
-            "Histogram of observed priority queue sizes",
+            "Histogram of observed priority queue sizes for all PeerIds",
             priority_queue_size.clone(),
         );
 
-        let non_priority_queue_size = Histogram::new(linear_buckets(0.0, 25.0, 100));
+        let non_priority_queue_size = Family::new_with_constructor(hist_builder);
         registry.register(
             "non_priority_queue_size",
             "Histogram of observed non-priority queue sizes",
@@ -558,13 +562,21 @@ impl Metrics {
     }
 
     /// Observes a priority queue size.
-    pub(crate) fn observe_priority_queue_size(&mut self, len: usize) {
-        self.priority_queue_size.observe(len as f64);
+    pub(crate) fn observe_priority_queue_size(&mut self, len: usize, peer_id: &PeerId) {
+        self.priority_queue_size
+            .get_or_create(&PeerIdLabel {
+                peer_id: peer_id.to_string(),
+            })
+            .observe(len as f64);
     }
 
     /// Observes a non-priority queue size.
-    pub(crate) fn observe_non_priority_queue_size(&mut self, len: usize) {
-        self.non_priority_queue_size.observe(len as f64);
+    pub(crate) fn observe_non_priority_queue_size(&mut self, len: usize, peer_id: &PeerId) {
+        self.non_priority_queue_size
+            .get_or_create(&PeerIdLabel {
+                peer_id: peer_id.to_string(),
+            })
+            .observe(len as f64);
     }
 
     /// Observe a score of a mesh peer.
@@ -658,6 +670,11 @@ struct ProtocolLabel {
 #[derive(PartialEq, Eq, Hash, EncodeLabelSet, Clone, Debug)]
 struct PenaltyLabel {
     penalty: Penalty,
+}
+
+#[derive(PartialEq, Eq, Hash, EncodeLabelSet, Clone, Debug)]
+struct PeerIdLabel {
+    peer_id: String,
 }
 
 #[derive(Clone)]

@@ -2057,9 +2057,9 @@ where
         // before we add all the gossip from this heartbeat in order to gain a true measure of
         // steady-state size of the queues.
         if let Some(m) = &mut self.metrics {
-            for sender_queue in self.connected_peers.values_mut().map(|v| &v.sender) {
-                m.observe_priority_queue_size(sender_queue.priority_len());
-                m.observe_non_priority_queue_size(sender_queue.non_priority_len());
+            for (peer_id, peer) in self.connected_peers.iter() {
+                m.observe_priority_queue_size(peer.sender.priority_len(), peer_id);
+                m.observe_non_priority_queue_size(peer.sender.non_priority_len(), peer_id);
             }
         }
 
