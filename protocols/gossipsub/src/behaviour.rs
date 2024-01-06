@@ -45,7 +45,6 @@ use libp2p_swarm::{
     THandlerOutEvent, ToSwarm,
 };
 
-use crate::peer_score::{PeerScore, PeerScoreParams, PeerScoreThresholds, RejectReason};
 use crate::protocol::SIGNING_PREFIX;
 use crate::subscription_filter::{AllowAllSubscriptionFilter, TopicSubscriptionFilter};
 use crate::time_cache::DuplicateCache;
@@ -70,6 +69,10 @@ use crate::{mcache::MessageCache, types::IWant};
 use crate::{
     metrics::{Churn, Config as MetricsConfig, Inclusion, Metrics, Penalty},
     types::IHave,
+};
+use crate::{
+    peer_score::{PeerScore, PeerScoreParams, PeerScoreThresholds, RejectReason},
+    types::MembershipState,
 };
 use crate::{rpc_proto::proto, FailedMessages, TopicScoreParams};
 use crate::{PublishError, SubscriptionError, ValidationError};
@@ -505,7 +508,7 @@ where
     pub fn all_peers(&self) -> impl Iterator<Item = (&PeerId, Vec<&TopicHash>)> {
         self.connected_peers
             .iter()
-            .map(|(peer_id, peer)| (peer_id, peer.topics.iter().collect()))
+            .map(|(peer_id, peer)| (peer_id, peer.topics.keys().collect()))
     }
 
     /// Lists all known peers and their associated protocol.
@@ -624,7 +627,7 @@ where
         let mut peers_on_topic = self
             .connected_peers
             .iter()
-            .filter(|(_, p)| p.topics.contains(&topic_hash))
+            .filter(|(_, p)| p.topics.contains_key(&topic_hash))
             .map(|(peer_id, _)| peer_id)
             .peekable();
 
@@ -1392,7 +1395,7 @@ where
                 .connected_peers
                 .get_mut(peer_id)
                 .expect("Should be connected to peer");
-            peer.topics.insert(topic.clone());
+            peer.topics.insert(topic.clone(), MembershipState::Mesh);
         }
 
         // we don't GRAFT to/from explicit peers; complain loudly if this happens
@@ -1898,7 +1901,7 @@ where
 
         let filtered_topics = match self
             .subscription_filter
-            .filter_incoming_subscriptions(subscriptions, &peer.topics)
+            .filter_incoming_subscriptions(subscriptions, &peer.topics.keys().cloned().collect())
         {
             Ok(topics) => topics,
             Err(s) => {
@@ -1918,7 +1921,9 @@ where
             match subscription.action {
                 SubscriptionAction::Subscribe => {
                     // add to the peer_topics mapping
-                    if peer.topics.insert(topic_hash.clone()) {
+                    if !peer.topics.contains_key(&topic_hash) {
+                        peer.topics
+                            .insert(topic_hash.clone(), MembershipState::Subscribed);
                         tracing::debug!(
                             peer=%propagation_source,
                             topic=%topic_hash,
@@ -1975,7 +1980,7 @@ where
                 }
                 SubscriptionAction::Unsubscribe => {
                     // remove topic from the peer_topics mapping
-                    if peer.topics.remove(topic_hash) {
+                    if peer.topics.remove(topic_hash).is_some() {
                         tracing::debug!(
                             peer=%propagation_source,
                             topic=%topic_hash,
@@ -2362,7 +2367,7 @@ where
                 let peer_score = *scores.get(peer_id).unwrap_or(&0.0);
                 match self.connected_peers.get(peer_id) {
                     Some(peer) => {
-                        if !peer.topics.contains(topic_hash) || peer_score < publish_threshold {
+                        if !peer.topics.contains_key(topic_hash) || peer_score < publish_threshold {
                             tracing::debug!(
                                 topic=%topic_hash,
                                 "HEARTBEAT: Peer removed from fanout for topic"
@@ -2655,7 +2660,7 @@ where
                 if Some(peer_id) != propagation_source
                     && !originating_peers.contains(peer_id)
                     && Some(peer_id) != message.source.as_ref()
-                    && peer.topics.contains(&message.topic)
+                    && peer.topics.contains_key(&message.topic)
                 {
                     recipient_peers.insert(*peer_id);
                 }
@@ -2897,7 +2902,7 @@ where
                 // If there are more connections and this peer is in a mesh, inform the first connection
                 // handler.
                 if !peer.connections.is_empty() {
-                    for topic in &peer.topics {
+                    for topic in peer.topics.keys() {
                         if let Some(mesh_peers) = self.mesh.get(topic) {
                             if mesh_peers.contains(&peer_id) {
                                 self.events.push_back(ToSwarm::NotifyHandler {
@@ -2920,7 +2925,7 @@ where
                 .expect("Peer should exist in the connected_peers");
 
             // remove peer from all mappings
-            for topic in &peer.topics {
+            for topic in peer.topics.keys() {
                 // check the mesh for the topic
                 if let Some(mesh_peers) = self.mesh.get_mut(topic) {
                     // check if the peer is in the mesh and remove it
@@ -3296,7 +3301,7 @@ fn peer_added_to_mesh(
     };
 
     if let Some(peer) = connections.get(&peer_id) {
-        for topic in &peer.topics {
+        for topic in peer.topics.keys() {
             if !new_topics.contains(&topic) {
                 if let Some(mesh_peers) = mesh.get(topic) {
                     if mesh_peers.contains(&peer_id) {
@@ -3334,7 +3339,7 @@ fn peer_removed_from_mesh(
         .expect("There should be at least one connection to a peer.");
 
     if let Some(peer) = connections.get(&peer_id) {
-        for topic in &peer.topics {
+        for topic in peer.topics.keys() {
             if topic != old_topic {
                 if let Some(mesh_peers) = mesh.get(topic) {
                     if mesh_peers.contains(&peer_id) {
@@ -3365,7 +3370,7 @@ fn get_random_peers_dynamic(
 ) -> BTreeSet<PeerId> {
     let mut gossip_peers = connected_peers
         .iter()
-        .filter(|(_, p)| p.topics.contains(topic_hash))
+        .filter(|(_, p)| p.topics.contains_key(topic_hash))
         .filter(|(peer_id, _)| f(peer_id))
         .filter(|(_, p)| p.kind == PeerKind::Gossipsub || p.kind == PeerKind::Gossipsubv1_1)
         .map(|(peer_id, _)| *peer_id)

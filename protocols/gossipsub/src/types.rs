@@ -29,7 +29,7 @@ use libp2p_identity::PeerId;
 use libp2p_swarm::ConnectionId;
 use prometheus_client::encoding::EncodeLabelValue;
 use quick_protobuf::MessageWrite;
-use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -119,7 +119,18 @@ pub(crate) struct PeerConnections {
     /// The rpc sender to the peer.
     pub(crate) sender: RpcSender,
     /// Subscribed topics.
-    pub(crate) topics: BTreeSet<TopicHash>,
+    pub(crate) topics: HashMap<TopicHash, MembershipState>,
+}
+
+/// Peer state for a subscribed topic.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum MembershipState {
+    /// Peer is solely subscribed to the topic.
+    Subscribed,
+    /// Peer is part of the mesh for the topic.
+    Mesh,
+    /// Peer is part of the fanout for the topic.
+    Fanout,
 }
 
 /// Describes the types of peers that can exist in the gossipsub context.

@@ -471,7 +471,7 @@ fn test_unsubscribe() {
         assert!(
             gs.connected_peers
                 .values()
-                .any(|p| p.topics.contains(topic_hash)),
+                .any(|p| p.topics.contains_key(topic_hash)),
             "Topic_peers contain a topic entry"
         );
         assert!(
@@ -683,7 +683,7 @@ fn test_publish_without_flood_publishing() {
     assert_eq!(
         gs.connected_peers
             .values()
-            .filter(|p| p.topics.contains(&topic_hashes[0]))
+            .filter(|p| p.topics.contains_key(&topic_hashes[0]))
             .count(),
         20,
         "Peers should be subscribed to the topic"
@@ -853,7 +853,7 @@ fn test_inject_connected() {
     for peer in peers {
         let peer = gs.connected_peers.get(&peer).unwrap();
         assert!(
-            peer.topics == topic_hashes.iter().cloned().collect(),
+            BTreeSet::from_iter(topic_hashes.iter()) == peer.topics.keys().collect(),
             "The topics for each node should all topics"
         );
     }
@@ -904,22 +904,12 @@ fn test_handle_received_subscriptions() {
 
     let peer = gs.connected_peers.get(&peers[0]).unwrap();
     assert!(
-        peer.topics
-            == topic_hashes
-                .iter()
-                .take(3)
-                .cloned()
-                .collect::<BTreeSet<_>>(),
+        BTreeSet::from_iter(topic_hashes.iter().take(3)) == peer.topics.keys().collect(),
         "First peer should be subscribed to three topics"
     );
     let peer1 = gs.connected_peers.get(&peers[1]).unwrap();
     assert!(
-        peer1.topics
-            == topic_hashes
-                .iter()
-                .take(3)
-                .cloned()
-                .collect::<BTreeSet<_>>(),
+        BTreeSet::from_iter(topic_hashes.iter().take(3)) == peer1.topics.keys().collect(),
         "Second peer should be subscribed to three topics"
     );
 
@@ -932,7 +922,7 @@ fn test_handle_received_subscriptions() {
         let topic_peers = gs
             .connected_peers
             .iter()
-            .filter(|(_, p)| p.topics.contains(topic_hash))
+            .filter(|(_, p)| p.topics.contains_key(topic_hash))
             .map(|(peer_id, _)| *peer_id)
             .collect::<BTreeSet<PeerId>>();
         assert!(
@@ -953,7 +943,7 @@ fn test_handle_received_subscriptions() {
 
     let peer = gs.connected_peers.get(&peers[0]).unwrap();
     assert!(
-        peer.topics == topic_hashes[1..3].iter().cloned().collect::<BTreeSet<_>>(),
+        BTreeSet::from_iter(topic_hashes.iter().skip(1).take(2)) == peer.topics.keys().collect(),
         "Peer should be subscribed to two topics"
     );
 
@@ -961,7 +951,7 @@ fn test_handle_received_subscriptions() {
     let topic_peers = gs
         .connected_peers
         .iter()
-        .filter(|(_, p)| p.topics.contains(&topic_hashes[0]))
+        .filter(|(_, p)| p.topics.contains_key(&topic_hashes[0]))
         .map(|(peer_id, _)| *peer_id)
         .collect::<BTreeSet<PeerId>>();
 
@@ -996,7 +986,10 @@ fn test_get_random_peers() {
             PeerConnections {
                 kind: PeerKind::Gossipsubv1_1,
                 connections: vec![ConnectionId::new_unchecked(0)],
-                topics: topics.clone(),
+                topics: topics
+                    .iter()
+                    .map(|topic| (topic.clone(), MembershipState::Subscribed))
+                    .collect(),
                 sender: RpcSender::new(gs.config.connection_handler_queue_len()),
             },
         );
