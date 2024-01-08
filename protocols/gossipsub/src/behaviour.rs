@@ -41,8 +41,8 @@ use libp2p_identity::PeerId;
 use libp2p_swarm::{
     behaviour::{AddressChange, ConnectionClosed, ConnectionEstablished, FromSwarm},
     dial_opts::DialOpts,
-    ConnectionDenied, ConnectionId, NetworkBehaviour, NotifyHandler, THandler, THandlerInEvent,
-    THandlerOutEvent, ToSwarm,
+    ConnectionDenied, ConnectionId, DialFailure, NetworkBehaviour, NotifyHandler, THandler,
+    THandlerInEvent, THandlerOutEvent, ToSwarm,
 };
 
 use crate::protocol::SIGNING_PREFIX;
@@ -3273,6 +3273,27 @@ where
             }
             FromSwarm::ConnectionClosed(connection_closed) => {
                 self.on_connection_closed(connection_closed)
+            }
+            FromSwarm::DialFailure(DialFailure {
+                peer_id,
+                connection_id,
+                ..
+            }) => {
+                if let Some(peer_id) = peer_id {
+                    let mut peer = self
+                        .connected_peers
+                        .remove(&peer_id)
+                        .expect("To be connected to peer");
+                    let index = peer
+                        .connections
+                        .iter()
+                        .position(|v| v == &connection_id)
+                        .expect("Previously established connection to peer must be present");
+                    peer.connections.remove(index);
+                    if !peer.connections.is_empty() {
+                        self.connected_peers.insert(peer_id, peer);
+                    }
+                }
             }
             FromSwarm::AddressChange(address_change) => self.on_address_change(address_change),
             _ => {}
