@@ -80,8 +80,8 @@ use std::{
 /// ).await.unwrap());
 ///
 /// let rcgen_cert = generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
-/// let priv_key = websocket::tls::PrivateKey::new(rcgen_cert.serialize_private_key_der());
-/// let cert = websocket::tls::Certificate::new(rcgen_cert.serialize_der().unwrap());
+/// let priv_key = websocket::tls::PrivateKey::new(rcgen_cert.key_pair.serialize_der());
+/// let cert = websocket::tls::Certificate::new(rcgen_cert.cert.der().to_vec());
 /// transport.set_tls_config(websocket::tls::Config::new(priv_key, vec![cert]).unwrap());
 ///
 /// let id = transport.listen_on(ListenerId::next(), "/ip4/127.0.0.1/tcp/0/wss".parse().unwrap()).unwrap();

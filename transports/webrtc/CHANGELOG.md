@@ -1,3 +1,8 @@
+## 0.7.2-alpha
+
+- Bump `webrtc` dependency to `0.11.0`.
+  See [PR XXXX](https://github.com/libp2p/rust-libp2p/pull/XXXX).
+
 ## 0.7.1-alpha
 
 - Bump `libp2p-webrtc-utils` dependency to `0.2.0`.
