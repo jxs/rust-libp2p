@@ -20,6 +20,7 @@
 
 use super::*;
 
+use crate::behaviour::PeerInfo;
 use crate::kbucket::{Distance, Key, KeyBytes};
 use crate::{ALPHA_VALUE, K_VALUE};
 use std::collections::btree_map::{BTreeMap, Entry};
@@ -86,7 +87,7 @@ impl ClosestPeersIter {
     /// Creates a new iterator with a default configuration.
     pub fn new<I>(target: KeyBytes, known_closest_peers: I) -> Self
     where
-        I: IntoIterator<Item = Key<PeerId>>,
+        I: IntoIterator<Item = PeerInfo>,
     {
         Self::with_config(
             ClosestPeersIterConfig::default(),
@@ -102,7 +103,7 @@ impl ClosestPeersIter {
         known_closest_peers: I,
     ) -> Self
     where
-        I: IntoIterator<Item = Key<PeerId>>,
+        I: IntoIterator<Item = PeerInfo>,
         T: Into<KeyBytes>,
     {
         let target = target.into();
@@ -111,10 +112,16 @@ impl ClosestPeersIter {
         let closest_peers = BTreeMap::from_iter(
             known_closest_peers
                 .into_iter()
-                .map(|key| {
-                    let distance = key.distance(&target);
+                .map(|peer_info| {
+                    let distance = peer_info.key.distance(&target);
                     let state = PeerState::NotContacted;
-                    (distance, Peer { key, state })
+                    (
+                        distance,
+                        Peer {
+                            state,
+                            info: peer_info,
+                        },
+                    )
                 })
                 .take(K_VALUE.into()),
         );
@@ -149,7 +156,7 @@ impl ClosestPeersIter {
     /// calling this function has no effect and `false` is returned.
     pub fn on_success<I>(&mut self, peer: &PeerId, closer_peers: I) -> bool
     where
-        I: IntoIterator<Item = PeerId>,
+        I: IntoIterator<Item = PeerInfo>,
     {
         if let State::Finished = self.state {
             return false;
@@ -197,11 +204,10 @@ impl ClosestPeersIter {
         //        (i.e. is the first entry after being incorporated)
         let mut progress = self.closest_peers.len() < self.config.num_results.get();
         for peer in closer_peers {
-            let key = peer.into();
             let distance = self.target.distance(&key);
             let peer = Peer {
-                key,
                 state: PeerState::NotContacted,
+                info: peer,
             };
 
             let is_first_insert = match self.closest_peers.entry(distance) {
@@ -278,7 +284,7 @@ impl ClosestPeersIter {
         self.closest_peers
             .values()
             .filter_map(|peer| match peer.state {
-                PeerState::Waiting(..) => Some(peer.key.preimage()),
+                PeerState::Waiting(..) => Some(peer.info.key.preimage()),
                 _ => None,
             })
     }
@@ -350,7 +356,9 @@ impl ClosestPeersIter {
                         let timeout = now + self.config.peer_timeout;
                         peer.state = PeerState::Waiting(timeout);
                         self.num_waiting += 1;
-                        return PeersIterState::Waiting(Some(Cow::Borrowed(peer.key.preimage())));
+                        return PeersIterState::Waiting(Some(Cow::Borrowed(
+                            peer.info.key.preimage(),
+                        )));
                     } else {
                         return PeersIterState::WaitingAtCapacity;
                     }
@@ -386,12 +394,12 @@ impl ClosestPeersIter {
     }
 
     /// Consumes the iterator, returning the closest peers.
-    pub fn into_result(self) -> impl Iterator<Item = PeerId> {
+    pub fn into_result(self) -> impl Iterator<Item = PeerInfo> {
         self.closest_peers
             .into_iter()
             .filter_map(|(_, peer)| {
                 if let PeerState::Succeeded = peer.state {
-                    Some(peer.key.into_preimage())
+                    Some(peer.info)
                 } else {
                     None
                 }
@@ -460,8 +468,8 @@ enum State {
 /// Representation of a peer in the context of a iterator.
 #[derive(Debug, Clone)]
 struct Peer {
-    key: Key<PeerId>,
     state: PeerState,
+    info: PeerInfo,
 }
 
 /// The state of a single `Peer`.

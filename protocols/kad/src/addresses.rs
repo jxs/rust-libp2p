@@ -24,7 +24,7 @@ use std::fmt;
 
 /// A non-empty list of (unique) addresses of a peer in the routing table.
 /// Every address must be a fully-qualified /p2p address.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Addresses {
     addrs: SmallVec<[Multiaddr; 6]>,
 }

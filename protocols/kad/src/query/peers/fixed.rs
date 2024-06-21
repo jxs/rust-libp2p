@@ -18,6 +18,8 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+use crate::behaviour::PeerInfo;
+
 use super::*;
 
 use fnv::FnvHashMap;
@@ -29,13 +31,20 @@ pub(crate) struct FixedPeersIter {
     parallelism: NonZeroUsize,
 
     /// The state of peers emitted by the iterator.
-    peers: FnvHashMap<PeerId, PeerState>,
+    peers: FnvHashMap<PeerId, Peer>,
 
     /// The backlog of peers that can still be emitted.
-    iter: vec::IntoIter<PeerId>,
+    iter: vec::IntoIter<PeerInfo>,
 
     /// The internal state of the iterator.
     state: State,
+}
+
+/// Representation of a peer in the context of a iterator.
+#[derive(Debug, Clone)]
+struct Peer {
+    state: PeerState,
+    info: PeerInfo,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -44,7 +53,7 @@ enum State {
     Finished,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum PeerState {
     /// The iterator is waiting for a result to be reported back for the peer.
     Waiting,
@@ -60,7 +69,7 @@ impl FixedPeersIter {
     #[allow(clippy::needless_collect)]
     pub(crate) fn new<I>(peers: I, parallelism: NonZeroUsize) -> Self
     where
-        I: IntoIterator<Item = PeerId>,
+        I: IntoIterator<Item = PeerInfo>,
     {
         let peers = peers.into_iter().collect::<Vec<_>>();
 
@@ -84,10 +93,12 @@ impl FixedPeersIter {
     /// calling this function has no effect and `false` is returned.
     pub(crate) fn on_success(&mut self, peer: &PeerId) -> bool {
         if let State::Waiting { num_waiting } = &mut self.state {
-            if let Some(state @ PeerState::Waiting) = self.peers.get_mut(peer) {
-                *state = PeerState::Succeeded;
-                *num_waiting -= 1;
-                return true;
+            if let Some(peer) = self.peers.get_mut(peer) {
+                if let PeerState::Waiting = peer.state {
+                    peer.state = PeerState::Succeeded;
+                    *num_waiting -= 1;
+                    return true;
+                }
             }
         }
         false
@@ -105,10 +116,12 @@ impl FixedPeersIter {
     /// calling this function has no effect and `false` is returned.
     pub(crate) fn on_failure(&mut self, peer: &PeerId) -> bool {
         if let State::Waiting { num_waiting } = &mut self.state {
-            if let Some(state @ PeerState::Waiting) = self.peers.get_mut(peer) {
-                *state = PeerState::Failed;
-                *num_waiting -= 1;
-                return true;
+            if let Some(peer) = self.peers.get_mut(peer) {
+                if let PeerState::Waiting = peer.state {
+                    peer.state = PeerState::Failed;
+                    *num_waiting -= 1;
+                    return true;
+                }
             }
         }
         false
@@ -142,12 +155,16 @@ impl FixedPeersIter {
                                 return PeersIterState::Waiting(None);
                             }
                         }
-                        Some(p) => match self.peers.entry(p) {
+                        Some(info) => match self.peers.entry(info.id()) {
                             Entry::Occupied(_) => {} // skip duplicates
                             Entry::Vacant(e) => {
                                 *num_waiting += 1;
-                                e.insert(PeerState::Waiting);
-                                return PeersIterState::Waiting(Some(Cow::Owned(p)));
+                                let peer_id = info.id();
+                                e.insert(Peer {
+                                    state: PeerState::Waiting,
+                                    info,
+                                });
+                                return PeersIterState::Waiting(Some(Cow::Owned(peer_id)));
                             }
                         },
                     }
@@ -156,10 +173,10 @@ impl FixedPeersIter {
         }
     }
 
-    pub(crate) fn into_result(self) -> impl Iterator<Item = PeerId> {
-        self.peers.into_iter().filter_map(|(p, s)| {
-            if let PeerState::Succeeded = s {
-                Some(p)
+    pub(crate) fn into_result(self) -> impl Iterator<Item = PeerInfo> {
+        self.peers.into_iter().filter_map(|(_p, s)| {
+            if let PeerState::Succeeded = s.state {
+                Some(s.info)
             } else {
                 None
             }

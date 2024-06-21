@@ -50,7 +50,7 @@ impl ClosestDisjointPeersIter {
     #[cfg(test)]
     pub(crate) fn new<I>(target: KeyBytes, known_closest_peers: I) -> Self
     where
-        I: IntoIterator<Item = Key<PeerId>>,
+        I: IntoIterator<Item = PeerInfo>,
     {
         Self::with_config(
             ClosestPeersIterConfig::default(),
@@ -66,7 +66,7 @@ impl ClosestDisjointPeersIter {
         known_closest_peers: I,
     ) -> Self
     where
-        I: IntoIterator<Item = Key<PeerId>>,
+        I: IntoIterator<Item = PeerInfo>,
         T: Into<KeyBytes> + Clone,
     {
         let peers = known_closest_peers
@@ -149,7 +149,7 @@ impl ClosestDisjointPeersIter {
     /// calling this function has no effect and `false` is returned.
     pub(crate) fn on_success<I>(&mut self, peer: &PeerId, closer_peers: I) -> bool
     where
-        I: IntoIterator<Item = PeerId>,
+        I: IntoIterator<Item = PeerInfo>,
     {
         let mut updated = false;
 
@@ -315,13 +315,10 @@ impl ClosestDisjointPeersIter {
     ///       `num_results` closest benign peers, but as it can not
     ///       differentiate benign from faulty paths it as well returns faulty
     ///       peers and thus overall returns more than `num_results` peers.
-    pub(crate) fn into_result(self) -> impl Iterator<Item = PeerId> {
-        let result_per_path = self
-            .iters
-            .into_iter()
-            .map(|iter| iter.into_result().map(Key::from));
+    pub(crate) fn into_result(self) -> impl Iterator<Item = PeerInfo> {
+        let result_per_path = self.iters.into_iter().map(|iter| iter.into_result());
 
-        ResultIter::new(self.target, result_per_path).map(Key::into_preimage)
+        ResultIter::new(self.target, result_per_path)
     }
 }
 
@@ -378,13 +375,13 @@ enum ResponseState {
 #[derive(Clone, Debug)]
 struct ResultIter<I>
 where
-    I: Iterator<Item = Key<PeerId>>,
+    I: Iterator<Item = PeerInfo>,
 {
     target: KeyBytes,
     iters: Vec<Peekable<I>>,
 }
 
-impl<I: Iterator<Item = Key<PeerId>>> ResultIter<I> {
+impl<I: Iterator<Item = PeerInfo>> ResultIter<I> {
     fn new(target: KeyBytes, iters: impl Iterator<Item = I>) -> Self {
         ResultIter {
             target,
@@ -393,7 +390,7 @@ impl<I: Iterator<Item = Key<PeerId>>> ResultIter<I> {
     }
 }
 
-impl<I: Iterator<Item = Key<PeerId>>> Iterator for ResultIter<I> {
+impl<I: Iterator<Item = PeerInfo>> Iterator for ResultIter<I> {
     type Item = I::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -415,7 +412,7 @@ impl<I: Iterator<Item = Key<PeerId>>> Iterator for ResultIter<I> {
                             return Some(iter_a);
                         }
 
-                        if target.distance(next_a) < target.distance(next_b) {
+                        if target.distance(&next_a.key) < target.distance(&next_b.key) {
                             Some(iter_a)
                         } else {
                             Some(iter_b)

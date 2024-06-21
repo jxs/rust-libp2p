@@ -26,7 +26,8 @@ use peers::closest::{
 use peers::fixed::FixedPeersIter;
 use peers::PeersIterState;
 
-use crate::kbucket::{Key, KeyBytes};
+use crate::behaviour::PeerInfo;
+use crate::kbucket::KeyBytes;
 use crate::{ALPHA_VALUE, K_VALUE};
 use either::Either;
 use fnv::FnvHashMap;
@@ -91,7 +92,7 @@ impl<TInner> QueryPool<TInner> {
     /// Adds a query to the pool that contacts a fixed set of peers.
     pub(crate) fn add_fixed<I>(&mut self, peers: I, inner: TInner) -> QueryId
     where
-        I: IntoIterator<Item = PeerId>,
+        I: IntoIterator<Item = PeerInfo>,
     {
         let id = self.next_query_id();
         self.continue_fixed(id, peers, inner);
@@ -103,7 +104,7 @@ impl<TInner> QueryPool<TInner> {
     /// earlier.
     pub(crate) fn continue_fixed<I>(&mut self, id: QueryId, peers: I, inner: TInner)
     where
-        I: IntoIterator<Item = PeerId>,
+        I: IntoIterator<Item = PeerInfo>,
     {
         assert!(!self.queries.contains_key(&id));
         let parallelism = self.config.replication_factor;
@@ -116,7 +117,7 @@ impl<TInner> QueryPool<TInner> {
     pub(crate) fn add_iter_closest<T, I>(&mut self, target: T, peers: I, inner: TInner) -> QueryId
     where
         T: Into<KeyBytes> + Clone,
-        I: IntoIterator<Item = Key<PeerId>>,
+        I: IntoIterator<Item = PeerInfo>,
     {
         let id = self.next_query_id();
         self.continue_iter_closest(id, target, peers, inner);
@@ -132,7 +133,7 @@ impl<TInner> QueryPool<TInner> {
         inner: TInner,
     ) where
         T: Into<KeyBytes> + Clone,
-        I: IntoIterator<Item = Key<PeerId>>,
+        I: IntoIterator<Item = PeerInfo>,
     {
         let cfg = ClosestPeersIterConfig {
             num_results: self.config.replication_factor,
@@ -320,7 +321,7 @@ impl<TInner> Query<TInner> {
     /// the query, if applicable.
     pub(crate) fn on_success<I>(&mut self, peer: &PeerId, new_peers: I)
     where
-        I: IntoIterator<Item = PeerId>,
+        I: IntoIterator<Item = PeerInfo>,
     {
         let updated = match &mut self.peer_iter {
             QueryPeerIter::Closest(iter) => iter.on_success(peer, new_peers),
@@ -406,7 +407,7 @@ impl<TInner> Query<TInner> {
     }
 
     /// Consumes the query, producing the final `QueryResult`.
-    pub(crate) fn into_result(self) -> QueryResult<TInner, impl Iterator<Item = PeerId>> {
+    pub(crate) fn into_result(self) -> QueryResult<TInner, impl Iterator<Item = PeerInfo>> {
         let peers = match self.peer_iter {
             QueryPeerIter::Closest(iter) => Either::Left(Either::Left(iter.into_result())),
             QueryPeerIter::ClosestDisjoint(iter) => Either::Left(Either::Right(iter.into_result())),
