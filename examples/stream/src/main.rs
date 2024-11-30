@@ -2,14 +2,14 @@ use std::{io, time::Duration};
 
 use anyhow::{Context, Result};
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
-use libp2p::{multiaddr::Protocol, Multiaddr, PeerId, Stream, StreamProtocol};
+use libp2p::{multiaddr::Protocol, noise, tcp, yamux, Multiaddr, PeerId, Stream, StreamProtocol};
 use libp2p_stream as stream;
 use rand::RngCore;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
 const ECHO_PROTOCOL: StreamProtocol = StreamProtocol::new("/echo");
-
+const BUF_CAP: usize = 524_288;
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -28,12 +28,16 @@ async fn main() -> Result<()> {
 
     let mut swarm = libp2p::SwarmBuilder::with_new_identity()
         .with_tokio()
-        .with_quic()
+        .with_tcp(
+            tcp::Config::default(),
+            noise::Config::new,
+            yamux::Config::default,
+        )?
         .with_behaviour(|_| stream::Behaviour::new())?
         .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(10)))
         .build();
 
-    swarm.listen_on("/ip4/127.0.0.1/udp/0/quic-v1".parse()?)?;
+    swarm.listen_on("/ip4/127.0.0.1/tcp/0".parse()?)?;
 
     let mut incoming_streams = swarm
         .behaviour()
@@ -123,7 +127,7 @@ async fn connection_handler(peer: PeerId, mut control: stream::Control) {
 async fn echo(mut stream: Stream) -> io::Result<usize> {
     let mut total = 0;
 
-    let mut buf = [0u8; 100];
+    let mut buf = [0u8; BUF_CAP];
 
     loop {
         let read = stream.read(&mut buf).await?;
@@ -137,14 +141,12 @@ async fn echo(mut stream: Stream) -> io::Result<usize> {
 }
 
 async fn send(mut stream: Stream) -> io::Result<()> {
-    let num_bytes = rand::random::<usize>() % 1000;
-
-    let mut bytes = vec![0; num_bytes];
+    let mut bytes = vec![0; BUF_CAP];
     rand::thread_rng().fill_bytes(&mut bytes);
 
     stream.write_all(&bytes).await?;
 
-    let mut buf = vec![0; num_bytes];
+    let mut buf = vec![0; BUF_CAP];
     stream.read_exact(&mut buf).await?;
 
     if bytes != buf {
