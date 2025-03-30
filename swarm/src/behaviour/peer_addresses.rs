@@ -1,12 +1,10 @@
-use crate::behaviour::FromSwarm;
-use crate::{DialError, DialFailure, NewExternalAddrOfPeer};
+use std::num::NonZeroUsize;
 
 use libp2p_core::Multiaddr;
 use libp2p_identity::PeerId;
-
 use lru::LruCache;
 
-use std::num::NonZeroUsize;
+use crate::{behaviour::FromSwarm, DialError, DialFailure, NewExternalAddrOfPeer};
 
 /// Struct for tracking peers' external addresses of the [`Swarm`](crate::Swarm).
 #[derive(Debug)]
@@ -46,7 +44,6 @@ impl PeerAddresses {
     /// Appends address to the existing set if peer addresses already exist.
     /// Creates a new cache entry for peer_id if no addresses are present.
     /// Returns true if the newly added address was not previously in the cache.
-    ///
     pub fn add(&mut self, peer: PeerId, address: Multiaddr) -> bool {
         match prepare_addr(&peer, &address) {
             Ok(address) => {
@@ -98,16 +95,15 @@ impl Default for PeerAddresses {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::io;
+    use std::{io, sync::LazyLock};
 
-    use crate::ConnectionId;
     use libp2p_core::{
         multiaddr::Protocol,
         transport::{memory::MemoryTransportError, TransportError},
     };
 
-    use once_cell::sync::Lazy;
+    use super::*;
+    use crate::ConnectionId;
 
     #[test]
     fn new_peer_addr_returns_correct_changed_value() {
@@ -331,8 +327,8 @@ mod tests {
         errors
     }
 
-    static MEMORY_ADDR_1000: Lazy<Multiaddr> =
-        Lazy::new(|| Multiaddr::empty().with(Protocol::Memory(1000)));
-    static MEMORY_ADDR_2000: Lazy<Multiaddr> =
-        Lazy::new(|| Multiaddr::empty().with(Protocol::Memory(2000)));
+    static MEMORY_ADDR_1000: LazyLock<Multiaddr> =
+        LazyLock::new(|| Multiaddr::empty().with(Protocol::Memory(1000)));
+    static MEMORY_ADDR_2000: LazyLock<Multiaddr> =
+        LazyLock::new(|| Multiaddr::empty().with(Protocol::Memory(2000)));
 }
