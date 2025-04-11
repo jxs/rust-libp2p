@@ -1,13 +1,10 @@
 // change to quick-protobuf-codec
 
-use std::io;
-use std::io::ErrorKind;
+use std::{io, io::ErrorKind};
 
 use asynchronous_codec::{Framed, FramedRead, FramedWrite};
-
 use futures::{AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use libp2p_core::Multiaddr;
-
 use quick_protobuf_codec::Codec;
 use rand::Rng;
 
@@ -103,7 +100,10 @@ impl From<DialDataResponse> for proto::Message {
         );
         proto::Message {
             msg: proto::mod_Message::OneOfmsg::dialDataResponse(proto::DialDataResponse {
-                data: vec![0; val.data_count], // One could use Cow::Borrowed here, but it will require a modification of the generated code and that will fail the CI
+                // One could use Cow::Borrowed here, but it will
+                // require a modification of the generated code
+                // and that will fail the CI
+                data: vec![0; val.data_count],
             }),
         }
     }
@@ -252,10 +252,7 @@ pub(crate) async fn dial_back(stream: impl AsyncWrite + Unpin, nonce: Nonce) -> 
     let msg = proto::DialBack { nonce };
     let mut framed = FramedWrite::new(stream, Codec::<proto::DialBack>::new(DIAL_BACK_MAX_SIZE));
 
-    framed
-        .send(msg)
-        .await
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    framed.send(msg).await.map_err(io::Error::other)?;
 
     Ok(())
 }
@@ -277,10 +274,7 @@ pub(crate) async fn dial_back_response(stream: impl AsyncWrite + Unpin) -> io::R
         stream,
         Codec::<proto::DialBackResponse>::new(DIAL_BACK_MAX_SIZE),
     );
-    framed
-        .send(msg)
-        .await
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    framed.send(msg).await.map_err(io::Error::other)?;
 
     Ok(())
 }

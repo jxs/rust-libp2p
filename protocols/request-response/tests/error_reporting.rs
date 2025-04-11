@@ -1,3 +1,5 @@
+use std::{io, iter, pin::pin, time::Duration};
+
 use anyhow::{bail, Result};
 use async_std::task::sleep;
 use async_trait::async_trait;
@@ -10,9 +12,6 @@ use libp2p_swarm_test::SwarmExt;
 use request_response::{
     Codec, InboundFailure, InboundRequestId, OutboundFailure, OutboundRequestId, ResponseChannel,
 };
-use std::pin::pin;
-use std::time::Duration;
-use std::{io, iter};
 use tracing_subscriber::EnvFilter;
 
 #[async_std::test]
@@ -413,7 +412,7 @@ impl TryFrom<u8> for Action {
             4 => Ok(Action::FailOnWriteResponse),
             5 => Ok(Action::TimeoutOnWriteResponse),
             6 => Ok(Action::FailOnMaxStreams),
-            _ => Err(io::Error::new(io::ErrorKind::Other, "invalid action")),
+            _ => Err(io::Error::other("invalid action")),
         }
     }
 }
@@ -442,9 +441,7 @@ impl Codec for TestCodec {
         assert_eq!(buf.len(), 1);
 
         match buf[0].try_into()? {
-            Action::FailOnReadRequest => {
-                Err(io::Error::new(io::ErrorKind::Other, "FailOnReadRequest"))
-            }
+            Action::FailOnReadRequest => Err(io::Error::other("FailOnReadRequest")),
             action => Ok(action),
         }
     }
@@ -467,9 +464,7 @@ impl Codec for TestCodec {
         assert_eq!(buf.len(), 1);
 
         match buf[0].try_into()? {
-            Action::FailOnReadResponse => {
-                Err(io::Error::new(io::ErrorKind::Other, "FailOnReadResponse"))
-            }
+            Action::FailOnReadResponse => Err(io::Error::other("FailOnReadResponse")),
             Action::TimeoutOnReadResponse => loop {
                 sleep(Duration::MAX).await;
             },
@@ -487,9 +482,7 @@ impl Codec for TestCodec {
         T: AsyncWrite + Unpin + Send,
     {
         match req {
-            Action::FailOnWriteRequest => {
-                Err(io::Error::new(io::ErrorKind::Other, "FailOnWriteRequest"))
-            }
+            Action::FailOnWriteRequest => Err(io::Error::other("FailOnWriteRequest")),
             action => {
                 let bytes = [action.into()];
                 io.write_all(&bytes).await?;
@@ -508,9 +501,7 @@ impl Codec for TestCodec {
         T: AsyncWrite + Unpin + Send,
     {
         match res {
-            Action::FailOnWriteResponse => {
-                Err(io::Error::new(io::ErrorKind::Other, "FailOnWriteResponse"))
-            }
+            Action::FailOnWriteResponse => Err(io::Error::other("FailOnWriteResponse")),
             Action::TimeoutOnWriteResponse => loop {
                 sleep(Duration::MAX).await;
             },
@@ -567,6 +558,7 @@ async fn wait_request(
                         request,
                         channel,
                     },
+                ..
             }) => {
                 return Ok((peer, request_id, request, channel));
             }
@@ -601,6 +593,7 @@ async fn wait_inbound_failure(
                 peer,
                 request_id,
                 error,
+                ..
             }) => {
                 return Ok((peer, request_id, error));
             }
@@ -619,6 +612,7 @@ async fn wait_outbound_failure(
                 peer,
                 request_id,
                 error,
+                ..
             }) => {
                 return Ok((peer, request_id, error));
             }
