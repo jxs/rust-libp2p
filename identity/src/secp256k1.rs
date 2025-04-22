@@ -23,7 +23,6 @@
 use core::{cmp, fmt, hash};
 
 use asn1_der::typed::{DerDecodable, Sequence};
-use generic_array::GenericArray;
 use k256::{
     ecdsa::Signature,
     sha2::{Digest as ShaDigestTrait, Sha256},
@@ -194,13 +193,13 @@ impl PublicKey {
         self.verify_hash(digest.finalize().as_slice(), sig)
     }
 
-    /// Verify the Secp256k1 DER-encoded signature on a raw 256-bit message using the public key.  
+    /// Verify the Secp256k1 DER-encoded signature on a raw 256-bit message using the public key.
     /// Will panic if the hash is not 32 bytes long.
     pub fn verify_hash(&self, msg: &[u8], sig: &[u8]) -> bool {
         Signature::from_der(sig).is_ok_and(|s| {
             k256::ecdsa::hazmat::verify_prehashed(
                 &ProjectivePoint::from(self.0.as_affine()),
-                GenericArray::from_slice(msg),
+                msg.into(),
                 &s,
             )
             .is_ok()
