@@ -26,6 +26,8 @@ use asynchronous_codec::{Decoder, Encoder};
 use byteorder::{BigEndian, ByteOrder};
 use bytes::BytesMut;
 use libp2p_core::ConnectedPoint;
+use libp2p_swarm::Swarm;
+use libp2p_swarm_test::SwarmExt;
 use rand::Rng;
 
 use super::*;
@@ -429,109 +431,75 @@ impl Behaviour {
         }
     }
 }
-#[test]
-/// Test local node subscribing to a topic
-fn test_subscribe() {
-    // The node should:
-    // - Create an empty vector in mesh[topic]
-    // - Send subscription request to all peers
-    // - run JOIN(topic)
 
-    let subscribe_topic = vec![String::from("test_subscribe")];
-    let (gs, _, receivers, topic_hashes) = inject_nodes1()
-        .peer_no(20)
-        .topics(subscribe_topic)
-        .to_subscribe(true)
-        .create_network();
+// Create a Gossipsub Behaviour.
+fn create_gs<D, F>(keypair: Keypair) -> Behaviour<D, F>
+where
+    D: DataTransform + Default,
+    F: TopicSubscriptionFilter + Default,
+{
+    let config = ConfigBuilder::default()
+        .flood_publish(false)
+        .build()
+        .unwrap();
 
-    assert!(
-        gs.mesh.contains_key(&topic_hashes[0]),
-        "Subscribe should add a new entry to the mesh[topic] hashmap"
-    );
-
-    // collect all the subscriptions
-    let subscriptions = receivers
-        .into_values()
-        .fold(0, |mut collected_subscriptions, c| {
-            let priority = c.priority.get_ref();
-            while !priority.is_empty() {
-                if let Ok(RpcOut::Subscribe(_)) = priority.try_recv() {
-                    collected_subscriptions += 1
-                }
-            }
-            collected_subscriptions
-        });
-
-    // we sent a subscribe to all known peers
-    assert_eq!(subscriptions, 20);
+    Behaviour::new_with_subscription_filter_and_transform(
+        MessageAuthenticity::Signed(keypair),
+        config,
+        F::default(),
+        D::default(),
+    )
+    .unwrap()
 }
 
-/// Test unsubscribe.
-#[test]
-fn test_unsubscribe() {
-    // Unsubscribe should:
-    // - Remove the mesh entry for topic
-    // - Send UNSUBSCRIBE to all known peers
-    // - Call Leave
+/// Test local node subscribing to a topic
+#[tokio::test]
+async fn test_subscribe_unsubscribe() {
+    let topic = Topic::new("test_subscribe");
 
-    let topic_strings = vec![String::from("topic1"), String::from("topic2")];
-    let topics = topic_strings
-        .iter()
-        .map(|t| Topic::new(t.clone()))
-        .collect::<Vec<Topic>>();
+    let mut peer_swarm =
+        Swarm::new_ephemeral_tokio(create_gs::<IdentityTransform, AllowAllSubscriptionFilter>);
+    let mut subscriber_swarm =
+        Swarm::new_ephemeral_tokio(create_gs::<IdentityTransform, AllowAllSubscriptionFilter>);
 
-    // subscribe to topic_strings
-    let (mut gs, _, receivers, topic_hashes) = inject_nodes1()
-        .peer_no(20)
-        .topics(topic_strings)
-        .to_subscribe(true)
-        .create_network();
+    let (_, _) = peer_swarm.listen().with_memory_addr_external().await;
+    let (_, _) = subscriber_swarm.listen().with_memory_addr_external().await;
 
-    for topic_hash in &topic_hashes {
-        assert!(
-            gs.connected_peers
-                .values()
-                .any(|p| p.topics.contains(topic_hash)),
-            "Topic_peers contain a topic entry"
-        );
-        assert!(
-            gs.mesh.contains_key(topic_hash),
-            "mesh should contain a topic entry"
-        );
+    subscriber_swarm.connect(&mut peer_swarm).await;
+    let gs = subscriber_swarm.behaviour_mut();
+    gs.subscribe(&topic).unwrap();
+    let topic_hash = topic.hash();
+    let mesh = gs.mesh.get(&topic_hash).unwrap();
+    assert_eq!(mesh.len(), 0);
+    let local_peer_id = *subscriber_swarm.local_peer_id();
+
+    // tokio::spawn(subscriber_swarm.loop_on_next());
+
+    match peer_swarm.next_behaviour_event().await {
+        Event::Subscribed {
+            peer_id,
+            topic: received_topic,
+        } => {
+            assert_eq!(peer_id, local_peer_id);
+            assert_eq!(received_topic, topic.hash());
+        }
+        other => panic!("Expected subscribed event, got {other:?}"),
     }
 
-    // unsubscribe from both topics
-    assert!(
-        gs.unsubscribe(&topics[0]),
-        "should be able to unsubscribe successfully from each topic",
-    );
-    assert!(
-        gs.unsubscribe(&topics[1]),
-        "should be able to unsubscribe successfully from each topic",
-    );
+    let gs = subscriber_swarm.behaviour_mut();
+    assert!(gs.unsubscribe(&topic));
+    let topic_hash = topic.hash();
+    assert!(!gs.mesh.contains_key(&topic_hash));
 
-    // collect all the subscriptions
-    let subscriptions = receivers
-        .into_values()
-        .fold(0, |mut collected_subscriptions, c| {
-            let priority = c.priority.get_ref();
-            while !priority.is_empty() {
-                if let Ok(RpcOut::Subscribe(_)) = priority.try_recv() {
-                    collected_subscriptions += 1
-                }
-            }
-            collected_subscriptions
-        });
-
-    // we sent a unsubscribe to all known peers, for two topics
-    assert_eq!(subscriptions, 40);
-
-    // check we clean up internal structures
-    for topic_hash in &topic_hashes {
-        assert!(
-            !gs.mesh.contains_key(topic_hash),
-            "All topics should have been removed from the mesh"
-        );
+    match peer_swarm.next_behaviour_event().await {
+        Event::Unsubscribed {
+            peer_id,
+            topic: received_topic,
+        } => {
+            assert_eq!(peer_id, local_peer_id);
+            assert_eq!(received_topic, topic.hash());
+        }
+        other => panic!("Expected unsubscribed event, got {other:?}"),
     }
 }
 
