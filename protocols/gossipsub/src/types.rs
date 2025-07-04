@@ -105,6 +105,8 @@ impl std::fmt::Debug for MessageId {
 pub(crate) struct PeerDetails {
     /// The kind of protocol the peer supports.
     pub(crate) kind: PeerKind,
+    /// The Extensions supported by the peer if any.
+    pub(crate) extensions: Option<Extensions>,
     /// If the peer is an outbound connection.
     pub(crate) outbound: bool,
     /// Its current connections.
@@ -271,6 +273,8 @@ pub enum ControlAction {
     /// The node requests us to not forward message ids (peer_id + sequence _number) - IDontWant
     /// control message.
     IDontWant(IDontWant),
+    /// The Node has sent us its supported extensions.
+    Extensions(Extensions),
 }
 
 /// Node broadcasts known messages per topic - IHave control message.
@@ -314,10 +318,16 @@ pub struct IDontWant {
     pub(crate) message_ids: Vec<MessageId>,
 }
 
+/// The node has sent us the supported Gossipsub Extensions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Extensions {
+    pub(crate) test_extension: Option<bool>,
+}
+
 /// A Gossipsub RPC message sent.
 #[derive(Debug)]
 pub enum RpcOut {
-    /// Publish a Gossipsub message on network.`timeout` limits the duration the message
+    /// PublishV a Gossipsub message on network.`timeout` limits the duration the message
     /// can wait to be sent before it is abandoned.
     Publish { message: RawMessage, timeout: Delay },
     /// Forward a Gossipsub message on network. `timeout` limits the duration the message
@@ -338,6 +348,10 @@ pub enum RpcOut {
     /// The node requests us to not forward message ids (peer_id + sequence _number) - IDontWant
     /// control message.
     IDontWant(IDontWant),
+    /// Send a Extensions control message.
+    Extensions(Extensions),
+    /// Send a test extension message.
+    TestExtension,
 }
 
 impl RpcOut {
@@ -359,6 +373,7 @@ impl From<RpcOut> for proto::RPC {
                 subscriptions: Vec::new(),
                 publish: vec![message.into()],
                 control: None,
+                testExtension: None,
             },
             RpcOut::Forward {
                 message,
@@ -367,6 +382,7 @@ impl From<RpcOut> for proto::RPC {
                 publish: vec![message.into()],
                 subscriptions: Vec::new(),
                 control: None,
+                testExtension: None,
             },
             RpcOut::Subscribe(topic) => proto::RPC {
                 publish: Vec::new(),
@@ -375,6 +391,7 @@ impl From<RpcOut> for proto::RPC {
                     topic_id: Some(topic.into_string()),
                 }],
                 control: None,
+                testExtension: None,
             },
             RpcOut::Unsubscribe(topic) => proto::RPC {
                 publish: Vec::new(),
@@ -383,6 +400,7 @@ impl From<RpcOut> for proto::RPC {
                     topic_id: Some(topic.into_string()),
                 }],
                 control: None,
+                testExtension: None,
             },
             RpcOut::IHave(IHave {
                 topic_hash,
@@ -399,7 +417,9 @@ impl From<RpcOut> for proto::RPC {
                     graft: vec![],
                     prune: vec![],
                     idontwant: vec![],
+                    extensions: None,
                 }),
+                testExtension: None,
             },
             RpcOut::IWant(IWant { message_ids }) => proto::RPC {
                 publish: Vec::new(),
@@ -412,7 +432,9 @@ impl From<RpcOut> for proto::RPC {
                     graft: vec![],
                     prune: vec![],
                     idontwant: vec![],
+                    extensions: None,
                 }),
+                testExtension: None,
             },
             RpcOut::Graft(Graft { topic_hash }) => proto::RPC {
                 publish: Vec::new(),
@@ -425,7 +447,9 @@ impl From<RpcOut> for proto::RPC {
                     }],
                     prune: vec![],
                     idontwant: vec![],
+                    extensions: None,
                 }),
+                testExtension: None,
             },
             RpcOut::Prune(Prune {
                 topic_hash,
@@ -452,7 +476,9 @@ impl From<RpcOut> for proto::RPC {
                             backoff,
                         }],
                         idontwant: vec![],
+                        extensions: None,
                     }),
+                    testExtension: None,
                 }
             }
             RpcOut::IDontWant(IDontWant { message_ids }) => proto::RPC {
@@ -466,7 +492,30 @@ impl From<RpcOut> for proto::RPC {
                     idontwant: vec![proto::ControlIDontWant {
                         message_ids: message_ids.into_iter().map(|msg_id| msg_id.0).collect(),
                     }],
+                    extensions: None,
                 }),
+                testExtension: None,
+            },
+            RpcOut::Extensions(Extensions { test_extension }) => proto::RPC {
+                publish: Vec::new(),
+                subscriptions: Vec::new(),
+                control: Some(proto::ControlMessage {
+                    ihave: vec![],
+                    iwant: vec![],
+                    graft: vec![],
+                    prune: vec![],
+                    idontwant: vec![],
+                    extensions: Some(proto::ControlExtensions {
+                        testExtension: test_extension,
+                    }),
+                }),
+                testExtension: None,
+            },
+            RpcOut::TestExtension => proto::RPC {
+                subscriptions: vec![],
+                publish: vec![],
+                control: None,
+                testExtension: Some(true),
             },
         }
     }
@@ -481,6 +530,8 @@ pub struct RpcIn {
     pub subscriptions: Vec<Subscription>,
     /// List of Gossipsub control messages.
     pub control_msgs: Vec<ControlAction>,
+    /// Gossipsub test extension.
+    pub test_extension: Option<bool>,
 }
 
 impl fmt::Debug for RpcIn {
