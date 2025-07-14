@@ -1552,7 +1552,9 @@ where
         }
 
         peer.extensions = Some(extensions);
-        if extensions.test_extension.unwrap_or(false) {
+        if extensions.test_extension.unwrap_or(false)
+            && matches!(peer.kind, PeerKind::Gossipsubv1_3)
+        {
             self.send_message(*peer_id, RpcOut::TestExtension);
         }
     }

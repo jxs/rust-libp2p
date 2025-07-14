@@ -126,6 +126,8 @@ pub(crate) struct PeerDetails {
     derive(prometheus_client::encoding::EncodeLabelValue)
 )]
 pub enum PeerKind {
+    /// A gossipsub 1.3 peer.
+    Gossipsubv1_3,
     /// A gossipsub 1.2 peer.
     Gossipsubv1_2,
     /// A gossipsub 1.1 peer.
@@ -558,6 +560,7 @@ impl PeerKind {
             Self::Gossipsub => "Gossipsub v1.0",
             Self::Gossipsubv1_1 => "Gossipsub v1.1",
             Self::Gossipsubv1_2 => "Gossipsub v1.2",
+            Self::Gossipsubv1_3 => "Gossipsub v1.3",
         }
     }
 }
