@@ -3424,8 +3424,8 @@ where
                     self.handle_prune(&propagation_source, prune_msgs);
                 }
 
-                if let Some(result) = rpc.test_extension {
-                    tracing::debug!("Received Test Extension: {result}");
+                if let Some(_extension) = rpc.test_extension {
+                    tracing::debug!("Received Test Extension");
                 }
             }
         }

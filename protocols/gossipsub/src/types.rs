@@ -30,7 +30,11 @@ use quick_protobuf::MessageWrite;
 use serde::{Deserialize, Serialize};
 use web_time::Instant;
 
-use crate::{rpc::Sender, rpc_proto::proto, TopicHash};
+use crate::{
+    rpc::Sender,
+    rpc_proto::proto::{self, TestExtension},
+    TopicHash,
+};
 
 /// Messages that have expired while attempting to be sent to a peer.
 #[derive(Clone, Debug, Default)]
@@ -517,7 +521,7 @@ impl From<RpcOut> for proto::RPC {
                 subscriptions: vec![],
                 publish: vec![],
                 control: None,
-                testExtension: Some(true),
+                testExtension: Some(TestExtension {}),
             },
         }
     }
@@ -533,7 +537,7 @@ pub struct RpcIn {
     /// List of Gossipsub control messages.
     pub control_msgs: Vec<ControlAction>,
     /// Gossipsub test extension.
-    pub test_extension: Option<bool>,
+    pub test_extension: Option<TestExtension>,
 }
 
 impl fmt::Debug for RpcIn {
