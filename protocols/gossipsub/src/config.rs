@@ -125,6 +125,7 @@ pub struct Config {
     gossip_retransimission: u32,
     max_messages_per_rpc: Option<usize>,
     max_ihave_length: usize,
+    max_iwant_length: usize,
     max_ihave_messages: usize,
     max_idontwant_messages: usize,
     iwant_followup_time: Duration,
@@ -426,6 +427,11 @@ impl Config {
         self.max_ihave_length
     }
 
+    /// The maximum number of `message_ids` that we accept in a single IWANT message.
+    pub fn max_iwant_length(&self) -> usize {
+        self.max_iwant_length
+    }
+
     /// GossipSubMaxIHaveMessages is the maximum number of IHAVE messages to accept from a peer
     /// within a heartbeat.
     pub fn max_ihave_messages(&self) -> usize {
@@ -544,6 +550,7 @@ impl Default for ConfigBuilder {
                 gossip_retransimission: 3,
                 max_messages_per_rpc: None,
                 max_ihave_length: 5000,
+                max_iwant_length: 5000,
                 max_ihave_messages: 10,
                 iwant_followup_time: Duration::from_secs(3),
                 connection_handler_queue_len: 5000,
@@ -1059,6 +1066,12 @@ impl ConfigBuilder {
     /// The maximum number of `message_ids` that we accept in a single IDONTWANT message.
     pub fn max_idontwant_messages(&mut self, size: usize) -> &mut Self {
         self.config.max_idontwant_messages = size;
+        self
+    }
+
+    /// The maximum number of `message_ids` that we accept in a single IWANT message.
+    pub fn max_iwant_messages(&mut self, size: usize) -> &mut Self {
+        self.config.max_iwant_length = size;
         self
     }
 

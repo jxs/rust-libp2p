@@ -3325,7 +3325,8 @@ where
                         }) => {
                             ihave_msgs.push((topic_hash, message_ids));
                         }
-                        ControlAction::IWant(IWant { message_ids }) => {
+                        ControlAction::IWant(IWant { mut message_ids }) => {
+                            message_ids.truncate(self.config.max_iwant_length());
                             self.handle_iwant(&propagation_source, message_ids)
                         }
                         ControlAction::Graft(Graft { topic_hash }) => graft_msgs.push(topic_hash),
