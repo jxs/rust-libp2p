@@ -3241,7 +3241,13 @@ where
                 rpc,
                 invalid_messages,
             } => {
-                tracing::debug!(peer=%propagation_source, message=?rpc, "Received gossipsub message");
+                tracing::debug!(
+                    peer=%propagation_source,
+                    messages = rpc.messages.len(),
+                    subscriptions = rpc.subscriptions.len(),
+                    control = rpc.control_msgs.len(),
+                    "Received gossipsub message"
+                );
                 // Handle the gossipsub RPC
 
                 // Handle subscriptions
@@ -3328,7 +3334,7 @@ where
                             peers,
                             backoff,
                         }) => prune_msgs.push((topic_hash, peers, backoff)),
-                        ControlAction::IDontWant(IDontWant { message_ids }) => {
+                        ControlAction::IDontWant(IDontWant { mut message_ids }) => {
                             let Some(peer) = self.connected_peers.get_mut(&propagation_source)
                             else {
                                 tracing::error!(peer = %propagation_source,
@@ -3336,6 +3342,7 @@ where
                                 continue;
                             };
 
+                            message_ids.truncate(self.config.max_idontwant_messages());
                             // Remove messages from the queue.
                             #[allow(unused)]
                             let removed = peer.messages.remove_data_messages(&message_ids);
@@ -3355,15 +3362,6 @@ where
                             }
                         }
                     }
-                }
-                if !ihave_msgs.is_empty() {
-                    self.handle_ihave(&propagation_source, ihave_msgs);
-                }
-                if !graft_msgs.is_empty() {
-                    self.handle_graft(&propagation_source, graft_msgs);
-                }
-                if !prune_msgs.is_empty() {
-                    self.handle_prune(&propagation_source, prune_msgs);
                 }
             }
         }

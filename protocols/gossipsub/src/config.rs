@@ -126,6 +126,7 @@ pub struct Config {
     max_messages_per_rpc: Option<usize>,
     max_ihave_length: usize,
     max_ihave_messages: usize,
+    max_idontwant_messages: usize,
     iwant_followup_time: Duration,
     connection_handler_queue_len: usize,
     connection_handler_publish_duration: Duration,
@@ -476,6 +477,11 @@ impl Config {
     pub fn idontwant_on_publish(&self) -> bool {
         self.idontwant_on_publish
     }
+
+    /// The maximum number of `message_ids` that we accept in a single IDONTWANT message.
+    pub fn max_idontwant_messages(&self) -> usize {
+        self.max_idontwant_messages
+    }
 }
 
 impl Default for Config {
@@ -544,6 +550,7 @@ impl Default for ConfigBuilder {
                 connection_handler_publish_duration: Duration::from_secs(5),
                 connection_handler_forward_duration: Duration::from_secs(1),
                 idontwant_message_size_threshold: 1000,
+                max_idontwant_messages: 1000,
                 idontwant_on_publish: false,
                 topic_configuration: TopicConfigs::default(),
             },
@@ -1046,6 +1053,12 @@ impl ConfigBuilder {
     /// By default it is false.
     pub fn idontwant_on_publish(&mut self, idontwant_on_publish: bool) -> &mut Self {
         self.config.idontwant_on_publish = idontwant_on_publish;
+        self
+    }
+
+    /// The maximum number of `message_ids` that we accept in a single IDONTWANT message.
+    pub fn max_idontwant_messages(&mut self, size: usize) -> &mut Self {
+        self.config.max_idontwant_messages = size;
         self
     }
 
