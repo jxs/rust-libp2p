@@ -3363,6 +3363,15 @@ where
                         }
                     }
                 }
+                if !ihave_msgs.is_empty() {
+                    self.handle_ihave(&propagation_source, ihave_msgs);
+                }
+                if !graft_msgs.is_empty() {
+                    self.handle_graft(&propagation_source, graft_msgs);
+                }
+                if !prune_msgs.is_empty() {
+                    self.handle_prune(&propagation_source, prune_msgs);
+                }
             }
         }
     }
