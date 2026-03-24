@@ -3241,6 +3241,7 @@ where
                 rpc,
                 invalid_messages,
             } => {
+                tracing::trace!(peer=%propagation_source, message=?rpc, "Received gossipsub message");
                 tracing::debug!(
                     peer=%propagation_source,
                     messages = rpc.messages.len(),
