@@ -84,11 +84,11 @@ impl Queue {
         if message_ids.is_empty() {
             return 0;
         }
-
+        let message_ids_set: std::collections::HashSet<_> = message_ids.iter().collect();
         let mut count = 0;
         self.non_priority.retain(|message| match message {
             RpcOut::Publish { message_id, .. } | RpcOut::Forward { message_id, .. }
-                if message_ids.contains(message_id) =>
+                if message_ids_set.contains(message_id) =>
             {
                 count += 1;
                 false
