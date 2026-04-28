@@ -84,9 +84,6 @@ const IDONTWANT_CAP: usize = 10_000;
 /// IDONTWANT timeout before removal.
 const IDONTWANT_TIMEOUT: Duration = Duration::new(3, 0);
 
-/// Max allowed PRUNE backoff, 1 hour.
-const MAX_REMOTE_PRUNE_BACKOFF_SECONDS: u64 = 3600;
-
 /// Determines if published messages should be signed or not.
 ///
 /// Without signing, a number of privacy preserving modes can be selected.
@@ -1207,7 +1204,7 @@ where
         // IHAVE flood protection
         let peer_have = self.count_received_ihave.entry(*peer_id).or_insert(0);
         *peer_have += 1;
-        if *peer_have > self.config.max_ihave_messages() {
+        if *peer_have > self.config.max_ihave_messages_heartbeat() {
             tracing::debug!(
                 peer=%peer_id,
                 "IHAVE: peer has advertised too many times ({}) within this heartbeat \
@@ -1218,7 +1215,7 @@ where
         }
 
         if let Some(iasked) = self.count_sent_iwant.get(peer_id) {
-            if *iasked >= self.config.max_ihave_length() {
+            if *iasked >= self.config.max_control_messages() {
                 tracing::debug!(
                     peer=%peer_id,
                     "IHAVE: peer has already advertised too many messages ({}); ignoring",
@@ -1263,8 +1260,8 @@ where
         if !iwant_ids.is_empty() {
             let iasked = self.count_sent_iwant.entry(*peer_id).or_insert(0);
             let mut iask = iwant_ids.len();
-            if *iasked + iask > self.config.max_ihave_length() {
-                iask = self.config.max_ihave_length().saturating_sub(*iasked);
+            if *iasked + iask > self.config.max_control_messages() {
+                iask = self.config.max_control_messages().saturating_sub(*iasked);
             }
 
             // Send the list of IWANT control messages
@@ -1422,19 +1419,12 @@ where
                                 }
                                 peer_score.add_penalty(peer_id, 1);
 
-                                let remaining_backoff = backoff_time.saturating_duration_since(now);
-                                let apply_extra_penalty = match self
-                                    .config
-                                    .prune_backoff()
-                                    .checked_sub(self.config.graft_flood_threshold())
-                                {
-                                    Some(required_remaining) => {
-                                        remaining_backoff > required_remaining
-                                    }
-                                    // graft_flood_threshold >= prune_backoff
-                                    None => true,
-                                };
-                                if apply_extra_penalty {
+                                // check the flood cutoff
+                                let flood_cutoff = (backoff_time
+                                    + self.config.graft_flood_threshold())
+                                    - self.config.prune_backoff();
+                                if flood_cutoff > now {
+                                    // extra penalty
                                     peer_score.add_penalty(peer_id, 1);
                                 }
                             }
@@ -1565,11 +1555,10 @@ where
             }
         }
         if always_update_backoff || peer_removed {
-            let time = match backoff {
-                Some(backoff) if backoff < MAX_REMOTE_PRUNE_BACKOFF_SECONDS => {
-                    Duration::from_secs(backoff)
-                }
-                _ => self.config.prune_backoff(),
+            let time = if let Some(backoff) = backoff {
+                Duration::from_secs(backoff)
+            } else {
+                self.config.prune_backoff()
             };
             // is there a backoff specified by the peer? if so obey it.
             self.backoffs.update_backoff(topic_hash, peer_id, time);
@@ -2419,7 +2408,7 @@ where
             let fanout = &mut self.fanout; // help the borrow checker
             let fanout_ttl = self.config.fanout_ttl();
             self.fanout_last_pub.retain(|topic_hash, last_pub_time| {
-                if fanout_ttl < Instant::now().saturating_duration_since(*last_pub_time) {
+                if *last_pub_time + fanout_ttl < Instant::now() {
                     tracing::debug!(
                         topic=%topic_hash,
                         "HEARTBEAT: Fanout topic removed due to timeout"
@@ -2534,7 +2523,7 @@ where
         // Flush stale IDONTWANTs.
         for peer in self.connected_peers.values_mut() {
             while let Some((_front, instant)) = peer.dont_send.front() {
-                if IDONTWANT_TIMEOUT >= Instant::now().saturating_duration_since(*instant) {
+                if (*instant + IDONTWANT_TIMEOUT) >= Instant::now() {
                     break;
                 } else {
                     peer.dont_send.pop_front();
@@ -2561,7 +2550,7 @@ where
             }
 
             // if we are emitting more than GossipSubMaxIHaveLength message_ids, truncate the list
-            if message_ids.len() > self.config.max_ihave_length() {
+            if message_ids.len() > self.config.max_control_messages() {
                 // we do the truncation (with shuffling) per peer below
                 tracing::debug!(
                     "too many messages for gossip; will truncate IHAVE list ({} messages)",
@@ -2595,12 +2584,12 @@ where
             for peer_id in to_msg_peers {
                 let mut peer_message_ids = message_ids.clone();
 
-                if peer_message_ids.len() > self.config.max_ihave_length() {
+                if peer_message_ids.len() > self.config.max_control_messages() {
                     // We do this per peer so that we emit a different set for each peer.
                     // we have enough redundancy in the system that this will significantly increase
                     // the message coverage when we do truncate.
-                    peer_message_ids.partial_shuffle(&mut rng, self.config.max_ihave_length());
-                    peer_message_ids.truncate(self.config.max_ihave_length());
+                    peer_message_ids.partial_shuffle(&mut rng, self.config.max_control_messages());
+                    peer_message_ids.truncate(self.config.max_control_messages());
                 }
 
                 // send an IHAVE message
@@ -3241,14 +3230,7 @@ where
                 rpc,
                 invalid_messages,
             } => {
-                tracing::trace!(peer=%propagation_source, message=?rpc, "Received gossipsub message");
-                tracing::debug!(
-                    peer=%propagation_source,
-                    messages = rpc.messages.len(),
-                    subscriptions = rpc.subscriptions.len(),
-                    control = rpc.control_msgs.len(),
-                    "Received gossipsub message"
-                );
+                tracing::debug!(peer=%propagation_source, message=?rpc, "Received gossipsub message");
                 // Handle the gossipsub RPC
 
                 // Handle subscriptions
@@ -3289,16 +3271,7 @@ where
                 }
 
                 // Handle messages
-                for (count, raw_message) in rpc.messages.into_iter().enumerate() {
-                    // Only process the amount of messages the configuration allows.
-                    if self
-                        .config
-                        .max_messages_per_rpc()
-                        .is_some_and(|max_msg| count >= max_msg)
-                    {
-                        tracing::warn!("Received more messages than permitted. Ignoring further messages. Processed: {}", count);
-                        break;
-                    }
+                for raw_message in rpc.messages {
                     self.handle_received_message(raw_message, &propagation_source);
                 }
 
@@ -3308,17 +3281,7 @@ where
                 let mut ihave_msgs = vec![];
                 let mut graft_msgs = vec![];
                 let mut prune_msgs = vec![];
-                for (count, control_msg) in rpc.control_msgs.into_iter().enumerate() {
-                    // Only process the amount of messages the configuration allows.
-                    if self
-                        .config
-                        .max_messages_per_rpc()
-                        .is_some_and(|max_msg| count >= max_msg)
-                    {
-                        tracing::warn!("Received more control messages than permitted. Ignoring further messages. Processed: {}", count);
-                        break;
-                    }
-
+                for control_msg in rpc.control_msgs {
                     match control_msg {
                         ControlAction::IHave(IHave {
                             topic_hash,
@@ -3326,8 +3289,7 @@ where
                         }) => {
                             ihave_msgs.push((topic_hash, message_ids));
                         }
-                        ControlAction::IWant(IWant { mut message_ids }) => {
-                            message_ids.truncate(self.config.max_iwant_length());
+                        ControlAction::IWant(IWant { message_ids }) => {
                             self.handle_iwant(&propagation_source, message_ids)
                         }
                         ControlAction::Graft(Graft { topic_hash }) => graft_msgs.push(topic_hash),
@@ -3336,7 +3298,7 @@ where
                             peers,
                             backoff,
                         }) => prune_msgs.push((topic_hash, peers, backoff)),
-                        ControlAction::IDontWant(IDontWant { mut message_ids }) => {
+                        ControlAction::IDontWant(IDontWant { message_ids }) => {
                             let Some(peer) = self.connected_peers.get_mut(&propagation_source)
                             else {
                                 tracing::error!(peer = %propagation_source,
@@ -3344,7 +3306,6 @@ where
                                 continue;
                             };
 
-                            message_ids.truncate(self.config.max_idontwant_messages());
                             // Remove messages from the queue.
                             #[allow(unused)]
                             let removed = peer.messages.remove_data_messages(&message_ids);
