@@ -1066,12 +1066,14 @@ impl ConfigBuilder {
     /// The maximum number of `message_ids` that we accept in a single IDONTWANT message.
     pub fn max_idontwant_messages(&mut self, size: usize) -> &mut Self {
         self.config.max_idontwant_messages = size;
+        self.config.protocol.max_idontwant_messages = size;
         self
     }
 
     /// The maximum number of `message_ids` that we accept in a single IWANT message.
     pub fn max_iwant_messages(&mut self, size: usize) -> &mut Self {
         self.config.max_iwant_length = size;
+        self.config.protocol.max_iwant_length = size;
         self
     }
 

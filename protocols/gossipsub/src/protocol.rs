@@ -72,6 +72,13 @@ pub struct ProtocolConfig {
     pub(crate) default_max_transmit_size: usize,
     /// The max transmit sizes for a topic.
     pub(crate) max_transmit_sizes: HashMap<TopicHash, usize>,
+    /// Cap on `message_ids` decoded per IWANT control message. Mirrored from
+    /// `Config::max_iwant_length` so the codec can bound allocations before
+    /// the full RPC reaches the behaviour layer.
+    pub(crate) max_iwant_length: usize,
+    /// Cap on `message_ids` decoded per IDONTWANT control message. Mirrored
+    /// from `Config::max_idontwant_messages`.
+    pub(crate) max_idontwant_messages: usize,
 }
 
 impl Default for ProtocolConfig {
@@ -85,6 +92,8 @@ impl Default for ProtocolConfig {
             ],
             default_max_transmit_size: 65536,
             max_transmit_sizes: HashMap::new(),
+            max_iwant_length: 5000,
+            max_idontwant_messages: 1000,
         }
     }
 }
@@ -139,6 +148,8 @@ where
                     self.default_max_transmit_size,
                     self.validation_mode,
                     self.max_transmit_sizes,
+                    self.max_iwant_length,
+                    self.max_idontwant_messages,
                 ),
             ),
             protocol_id.kind,
@@ -162,6 +173,8 @@ where
                     self.default_max_transmit_size,
                     self.validation_mode,
                     self.max_transmit_sizes,
+                    self.max_iwant_length,
+                    self.max_idontwant_messages,
                 ),
             ),
             protocol_id.kind,
@@ -178,6 +191,10 @@ pub struct GossipsubCodec {
     codec: quick_protobuf_codec::Codec<proto::RPC>,
     /// Maximum transmit sizes per topic, with a default if not specified.
     max_transmit_sizes: HashMap<TopicHash, usize>,
+    /// Cap on `message_ids` decoded per IWANT control message.
+    max_iwant_length: usize,
+    /// Cap on `message_ids` decoded per IDONTWANT control message.
+    max_idontwant_messages: usize,
 }
 
 impl GossipsubCodec {
@@ -185,12 +202,16 @@ impl GossipsubCodec {
         max_length: usize,
         validation_mode: ValidationMode,
         max_transmit_sizes: HashMap<TopicHash, usize>,
+        max_iwant_length: usize,
+        max_idontwant_messages: usize,
     ) -> GossipsubCodec {
         let codec = quick_protobuf_codec::Codec::new(max_length);
         GossipsubCodec {
             validation_mode,
             codec,
             max_transmit_sizes,
+            max_iwant_length,
+            max_idontwant_messages,
         }
     }
 
@@ -499,6 +520,7 @@ impl Decoder for GossipsubCodec {
                         message_ids: iwant
                             .message_ids
                             .into_iter()
+                            .take(self.max_iwant_length)
                             .map(MessageId::from)
                             .collect::<Vec<_>>(),
                     })
@@ -550,6 +572,7 @@ impl Decoder for GossipsubCodec {
                         message_ids: idontwant
                             .message_ids
                             .into_iter()
+                            .take(self.max_idontwant_messages)
                             .map(MessageId::from)
                             .collect::<Vec<_>>(),
                     })
@@ -662,8 +685,13 @@ mod tests {
                 message_id: MessageId(vec![0, 0]),
             };
 
-            let mut codec =
-                GossipsubCodec::new(u32::MAX as usize, ValidationMode::Strict, HashMap::new());
+            let mut codec = GossipsubCodec::new(
+                u32::MAX as usize,
+                ValidationMode::Strict,
+                HashMap::new(),
+                5000,
+                1000,
+            );
             let mut buf = BytesMut::new();
             codec.encode(rpc.into_protobuf(), &mut buf).unwrap();
             let decoded_rpc = codec.decode(&mut buf).unwrap().unwrap();
