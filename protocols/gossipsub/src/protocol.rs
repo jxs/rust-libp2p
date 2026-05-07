@@ -542,6 +542,7 @@ impl Decoder for GossipsubCodec {
                     message_ids: ihave
                         .message_ids
                         .into_iter()
+                        .take(self.max_control_messages)
                         .map(MessageId::from)
                         .collect::<Vec<_>>(),
                 })
@@ -557,6 +558,7 @@ impl Decoder for GossipsubCodec {
                     message_ids: iwant
                         .message_ids
                         .into_iter()
+                        .take(self.max_control_messages)
                         .map(MessageId::from)
                         .collect::<Vec<_>>(),
                 })
@@ -607,6 +609,7 @@ impl Decoder for GossipsubCodec {
                 message_ids: idontwant
                     .message_ids
                     .into_iter()
+                    .take(self.max_control_messages)
                     .map(MessageId::from)
                     .collect::<Vec<_>>(),
             }));
