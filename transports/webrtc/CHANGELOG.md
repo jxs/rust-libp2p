@@ -1,7 +1,7 @@
 ## 0.10.0-alpha
 
-- Update webrtc-rs to `v0.17`.
-  See [PR XXXX](https://github.com/libp2p/rust-libp2p/pull/XXXX)
+- Update webrtc-rs to `v0.17` and fix libp2p noise data channel negotiation.
+  See [PR 6429](https://github.com/libp2p/rust-libp2p/pull/6429)
 
 - Raise MSRV to 1.88.0.
   See [PR 6273](https://github.com/libp2p/rust-libp2p/pull/6273).
