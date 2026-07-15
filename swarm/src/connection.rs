@@ -40,13 +40,12 @@ pub(crate) use error::{PendingInboundConnectionError, PendingOutboundConnectionE
 use futures::{FutureExt, StreamExt, future::BoxFuture, stream, stream::FuturesUnordered};
 use futures_timer::Delay;
 use libp2p_core::{
-    Endpoint,
+    Endpoint, StreamId,
     connection::ConnectedPoint,
     multiaddr::Multiaddr,
     muxing::{StreamMuxer, StreamMuxerBox, StreamMuxerEvent, StreamMuxerExt, SubstreamBox},
     transport::PortUse,
-    upgrade,
-    upgrade::{NegotiationError, ProtocolError},
+    upgrade::{self, NegotiationError, ProtocolError},
 };
 use libp2p_identity::PeerId;
 pub use supported_protocols::SupportedProtocols;
@@ -616,7 +615,7 @@ impl<UserData, TOk, TErr> StreamUpgrade<UserData, TOk, TErr> {
             user_data: Some(user_data),
             timeout,
             upgrade: Box::pin(async move {
-                let stream_id = substream.transport_stream_id();
+                let stream_id = substream.id();
                 let (info, stream) = multistream_select::dialer_select_proto(
                     substream,
                     protocols,
@@ -654,7 +653,7 @@ impl<UserData, TOk, TErr> StreamUpgrade<UserData, TOk, TErr> {
             user_data: Some(open_info),
             timeout: Delay::new(timeout),
             upgrade: Box::pin(async move {
-                let stream_id = substream.transport_stream_id();
+                let stream_id = substream.id();
                 let (info, stream) =
                     multistream_select::listener_select_proto(substream, protocols)
                         .await
@@ -857,7 +856,7 @@ mod tests {
 
     use futures::{AsyncRead, AsyncWrite, future};
     use libp2p_core::{
-        StreamMuxer,
+        StreamId, StreamMuxer,
         upgrade::{DeniedUpgrade, InboundUpgrade, OutboundUpgrade, UpgradeInfo},
     };
     use quickcheck::*;
@@ -1168,6 +1167,12 @@ mod tests {
 
     struct PendingSubstream {
         _weak: Weak<()>,
+    }
+
+    impl StreamId for PendingSubstream {
+        fn id(&self) -> Option<u64> {
+            None
+        }
     }
 
     impl AsyncRead for PendingSubstream {

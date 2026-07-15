@@ -38,7 +38,7 @@ use codec::LocalStreamId;
 pub use config::{Config, MaxBufferBehaviour};
 use futures::{prelude::*, ready};
 use libp2p_core::{
-    muxing::{StreamMuxer, StreamMuxerEvent},
+    muxing::{StreamId, StreamMuxer, StreamMuxerEvent},
     upgrade::{InboundConnectionUpgrade, OutboundConnectionUpgrade, UpgradeInfo},
 };
 use parking_lot::Mutex;
@@ -215,6 +215,15 @@ where
             current_data: Bytes::new(),
             io,
         }
+    }
+}
+
+impl<C> StreamId for Substream<C>
+where
+    C: AsyncRead + AsyncWrite + Unpin,
+{
+    fn id(&self) -> Option<u64> {
+        None
     }
 }
 

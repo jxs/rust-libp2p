@@ -26,7 +26,6 @@
 //! > **Note**: You normally don't need to use the methods of the `StreamMuxer` directly, as this
 //! > is managed by the library's internals.
 //!
-//! Each substream of a connection is an isolated stream of data. All the substreams are muxed
 //! together so that the data read from or written to each substream doesn't influence the other
 //! substreams.
 //!
@@ -63,6 +62,19 @@ pub use self::boxed::{StreamMuxerBox, SubstreamBox};
 
 mod boxed;
 
+/// Transport-assigned stream identifier, e.g. a QUIC stream id.
+///
+/// Implementations return `Some(id)` for transports that natively assign
+/// stream ids (QUIC, WebTransport) and `None` for transports that do not
+/// (TCP/Yamux). Used to key datagram flows to their control stream, see
+/// [libp2p/specs#680].
+///
+/// [libp2p/specs#680]: https://github.com/libp2p/specs/pull/680
+pub trait StreamId {
+    /// Returns the transport-level stream id, if one exists.
+    fn id(&self) -> Option<u64>;
+}
+
 /// Provides multiplexing for a connection by allowing users to open substreams.
 ///
 /// A substream created by a [`StreamMuxer`] is a type that implements [`AsyncRead`] and
@@ -70,7 +82,7 @@ mod boxed;
 /// `poll`-style functions that allow the implementation to make progress on various tasks.
 pub trait StreamMuxer {
     /// Type of the object that represents the raw substream where data can be read and written.
-    type Substream: AsyncRead + AsyncWrite;
+    type Substream: AsyncRead + AsyncWrite + StreamId;
 
     /// Error type of the muxer
     type Error: std::error::Error;
@@ -121,19 +133,6 @@ pub trait StreamMuxer {
 
     /// Largest [`StreamMuxer::send_datagram`] payload, or `None` if unsupported.
     fn max_datagram_size(&self) -> Option<usize> {
-        None
-    }
-
-    /// Transport-assigned stream id, where one exists (QUIC, WebTransport).
-    ///
-    /// Keys a datagram flow to its control stream, see [libp2p/specs#680].
-    ///
-    /// [libp2p/specs#680]: https://github.com/libp2p/specs/pull/680
-    fn substream_id(substream: &Self::Substream) -> Option<u64>
-    where
-        Self: Sized,
-    {
-        let _ = substream;
         None
     }
 }

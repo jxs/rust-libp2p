@@ -25,6 +25,7 @@ use std::{
 };
 
 use futures::prelude::*;
+use libp2p_core::muxing::StreamId;
 use libp2p_webrtc_utils::MAX_MSG_LEN;
 use tokio_util::compat::{Compat, TokioAsyncReadCompatExt};
 use webrtc::data::data_channel::{DataChannel, PollDataChannel};
@@ -51,6 +52,12 @@ impl Stream {
         (Self { inner }, drop_listener)
     }
 }
+impl StreamId for Stream {
+    fn id(&self) -> Option<u64> {
+        None
+    }
+}
+
 impl AsyncRead for Stream {
     fn poll_read(
         self: Pin<&mut Self>,

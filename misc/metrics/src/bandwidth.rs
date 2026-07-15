@@ -13,7 +13,7 @@ use futures::{
 };
 use libp2p_core::{
     Multiaddr,
-    muxing::{StreamMuxer, StreamMuxerEvent},
+    muxing::{StreamId, StreamMuxer, StreamMuxerEvent},
     transport::{DialOpts, ListenerId, TransportError, TransportEvent},
 };
 use libp2p_identity::PeerId;
@@ -224,10 +224,6 @@ where
         let this = self.project();
         this.inner.poll_close(cx)
     }
-
-    fn substream_id(substream: &Self::Substream) -> Option<u64> {
-        SMInner::substream_id(&substream.inner)
-    }
 }
 
 /// Wraps around an [`AsyncRead`] + [`AsyncWrite`] and logs the bandwidth that goes through it.
@@ -236,6 +232,12 @@ pub struct InstrumentedStream<SMInner> {
     #[pin]
     inner: SMInner,
     metrics: ConnectionMetrics,
+}
+
+impl<SMInner: StreamId> StreamId for InstrumentedStream<SMInner> {
+    fn id(&self) -> Option<u64> {
+        self.inner.id()
+    }
 }
 
 impl<SMInner: AsyncRead> AsyncRead for InstrumentedStream<SMInner> {

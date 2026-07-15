@@ -6,6 +6,7 @@ use std::{
 
 use futures::{AsyncRead, AsyncWrite, FutureExt};
 use js_sys::Uint8Array;
+use libp2p_core::muxing::StreamId;
 use send_wrapper::SendWrapper;
 use web_sys::{ReadableStreamDefaultReader, WritableStreamDefaultWriter};
 
@@ -199,6 +200,12 @@ impl Drop for StreamInner {
 
         // Cancel any ongoing reads.
         detach_promise(self.reader.cancel());
+    }
+}
+
+impl StreamId for Stream {
+    fn id(&self) -> Option<u64> {
+        None
     }
 }
 

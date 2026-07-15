@@ -78,6 +78,8 @@ async fn tokio_datagram_roundtrip() {
 #[cfg(feature = "tokio")]
 #[tokio::test]
 async fn tokio_substream_id_surfaced() {
+    use libp2p_core::StreamId;
+
     let _ = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .try_init();
@@ -85,9 +87,7 @@ async fn tokio_substream_id_surfaced() {
     let (stream_a, stream_b) = build_streams::<quic::tokio::Provider>().await;
 
     // Both ends of one bidi stream report the same QUIC stream id (libp2p/specs#680).
-    let id = stream_a.transport_stream_id();
-    assert!(id.is_some(), "QUIC surfaces a stream id");
-    assert_eq!(id, stream_b.transport_stream_id());
+    assert_eq!(stream_a.id(), stream_b.id());
 }
 
 #[cfg(feature = "tokio")]

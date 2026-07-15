@@ -25,6 +25,7 @@ use std::{
 };
 
 use futures::{AsyncRead, AsyncWrite};
+use libp2p_core::muxing::StreamId;
 
 /// A single stream on a connection
 pub struct Stream {
@@ -44,9 +45,11 @@ impl Stream {
             close_result: None,
         }
     }
+}
 
-    pub(super) fn id(&self) -> u64 {
-        self.send.id().into()
+impl StreamId for Stream {
+    fn id(&self) -> Option<u64> {
+        Some(self.send.id().into())
     }
 }
 

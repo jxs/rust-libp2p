@@ -29,7 +29,7 @@ use pin_project::pin_project;
 
 use crate::{
     Multiaddr,
-    muxing::{StreamMuxer, StreamMuxerEvent},
+    muxing::{StreamId, StreamMuxer, StreamMuxerEvent},
     transport::{DialOpts, ListenerId, Transport, TransportError, TransportEvent},
 };
 
@@ -89,11 +89,17 @@ where
             future::Either::Right(inner) => inner.poll(cx).map_err(Either::Right),
         }
     }
+}
 
-    fn substream_id(substream: &Self::Substream) -> Option<u64> {
-        match substream {
-            future::Either::Left(s) => A::substream_id(s),
-            future::Either::Right(s) => B::substream_id(s),
+impl<A, B> StreamId for future::Either<A, B>
+where
+    A: StreamId,
+    B: StreamId,
+{
+    fn id(&self) -> Option<u64> {
+        match self {
+            future::Either::Left(s) => s.id(),
+            future::Either::Right(s) => s.id(),
         }
     }
 }

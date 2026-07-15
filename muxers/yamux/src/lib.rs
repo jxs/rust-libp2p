@@ -33,7 +33,7 @@ use std::{
 
 use futures::{prelude::*, ready};
 use libp2p_core::{
-    muxing::{StreamMuxer, StreamMuxerEvent},
+    muxing::{StreamId, StreamMuxer, StreamMuxerEvent},
     upgrade::{InboundConnectionUpgrade, OutboundConnectionUpgrade, UpgradeInfo},
 };
 use thiserror::Error;
@@ -168,6 +168,12 @@ impl AsyncRead for Stream {
         bufs: &mut [IoSliceMut<'_>],
     ) -> Poll<io::Result<usize>> {
         Pin::new(&mut self.0).poll_read_vectored(cx, bufs)
+    }
+}
+
+impl StreamId for Stream {
+    fn id(&self) -> Option<u64> {
+        None
     }
 }
 

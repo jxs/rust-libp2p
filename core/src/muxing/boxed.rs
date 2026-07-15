@@ -10,7 +10,7 @@ use bytes::Bytes;
 use futures::{AsyncRead, AsyncWrite};
 use pin_project::pin_project;
 
-use crate::muxing::{SendDatagramError, StreamMuxer, StreamMuxerEvent};
+use crate::muxing::{SendDatagramError, StreamId, StreamMuxer, StreamMuxerEvent};
 
 /// Abstract `StreamMuxer`.
 pub struct StreamMuxerBox {
@@ -27,7 +27,7 @@ impl fmt::Debug for StreamMuxerBox {
 ///
 /// A [`SubstreamBox`] erases the concrete type it is given and only retains its `AsyncRead`
 /// and `AsyncWrite` capabilities.
-pub struct SubstreamBox(Pin<Box<dyn AsyncReadWrite + Send>>, Option<u64>);
+pub struct SubstreamBox(Pin<Box<dyn AsyncReadWrite + Send>>);
 
 #[pin_project]
 struct Wrap<T>
@@ -54,7 +54,7 @@ where
         self.project()
             .inner
             .poll_inbound(cx)
-            .map_ok(|s| SubstreamBox::new(T::substream_id(&s), s))
+            .map_ok(SubstreamBox::new)
             .map_err(into_io_error)
     }
 
@@ -65,7 +65,7 @@ where
         self.project()
             .inner
             .poll_outbound(cx)
-            .map_ok(|s| SubstreamBox::new(T::substream_id(&s), s))
+            .map_ok(SubstreamBox::new)
             .map_err(into_io_error)
     }
 
@@ -156,22 +156,13 @@ impl StreamMuxer for StreamMuxerBox {
     fn max_datagram_size(&self) -> Option<usize> {
         self.inner.as_ref().get_ref().max_datagram_size()
     }
-
-    fn substream_id(substream: &Self::Substream) -> Option<u64> {
-        substream.transport_stream_id()
-    }
 }
 
 impl SubstreamBox {
     /// Construct a new [`SubstreamBox`] from something
     /// that implements [`AsyncRead`] and [`AsyncWrite`].
-    pub fn new<S: AsyncRead + AsyncWrite + Send + 'static>(id: Option<u64>, stream: S) -> Self {
-        Self(Box::pin(stream), id)
-    }
-
-    /// Transport-assigned stream id, see [`StreamMuxer::substream_id`].
-    pub fn transport_stream_id(&self) -> Option<u64> {
-        self.1
+    pub fn new<S: AsyncRead + AsyncWrite + StreamId + Send + 'static>(stream: S) -> Self {
+        Self(Box::pin(stream))
     }
 }
 
@@ -182,7 +173,7 @@ impl fmt::Debug for SubstreamBox {
 }
 
 /// Workaround because Rust does not allow `Box<dyn AsyncRead + AsyncWrite>`.
-trait AsyncReadWrite: AsyncRead + AsyncWrite {
+trait AsyncReadWrite: AsyncRead + AsyncWrite + StreamId {
     /// Helper function to capture the erased inner type.
     ///
     /// Used to make the [`Debug`] implementation of [`SubstreamBox`] more useful.
@@ -191,7 +182,7 @@ trait AsyncReadWrite: AsyncRead + AsyncWrite {
 
 impl<S> AsyncReadWrite for S
 where
-    S: AsyncRead + AsyncWrite,
+    S: AsyncRead + AsyncWrite + StreamId,
 {
     fn type_name(&self) -> &'static str {
         std::any::type_name::<S>()
@@ -239,5 +230,11 @@ impl AsyncWrite for SubstreamBox {
 
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         self.0.as_mut().poll_close(cx)
+    }
+}
+
+impl StreamId for SubstreamBox {
+    fn id(&self) -> Option<u64> {
+        self.0.id()
     }
 }

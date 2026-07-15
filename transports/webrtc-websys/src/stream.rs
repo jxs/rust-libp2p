@@ -5,6 +5,7 @@ use std::{
 };
 
 use futures::{AsyncRead, AsyncWrite};
+use libp2p_core::muxing::StreamId;
 use send_wrapper::SendWrapper;
 use web_sys::RtcDataChannel;
 
@@ -33,6 +34,12 @@ impl Stream {
             },
             SendWrapper::new(drop_listener),
         )
+    }
+}
+
+impl StreamId for Stream {
+    fn id(&self) -> Option<u64> {
+        None
     }
 }
 

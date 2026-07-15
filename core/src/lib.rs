@@ -56,7 +56,7 @@ pub use connection::{ConnectedPoint, Endpoint};
 pub use libp2p_identity::PeerId;
 pub use multiaddr::Multiaddr;
 pub use multihash;
-pub use muxing::StreamMuxer;
+pub use muxing::{StreamId, StreamMuxer};
 pub use peer_record::PeerRecord;
 pub use signed_envelope::SignedEnvelope;
 pub use transport::Transport;

@@ -139,10 +139,6 @@ impl StreamMuxer for Connection {
         self.connection.max_datagram_size()
     }
 
-    fn substream_id(substream: &Self::Substream) -> Option<u64> {
-        Some(substream.id())
-    }
-
     fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         let this = self.get_mut();
 
