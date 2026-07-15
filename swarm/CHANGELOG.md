@@ -1,12 +1,6 @@
 ## 0.48.0
 
-- Add unreliable datagram support: `ConnectionEvent::Datagram` (inbound) and `ConnectionHandlerEvent::SendDatagram` (outbound).
-  See [PR 6489](https://github.com/libp2p/rust-libp2p/pull/6489).
-
-- Add `ConnectionEvent::DatagramMaxSize`, reporting a connection's current max outbound datagram size to the handler after a send.
-  See [PR 6489](https://github.com/libp2p/rust-libp2p/pull/6489).
-
-- Add `Stream::transport_stream_id`, exposing the transport stream id (QUIC) for datagram flows.
+- Add unreliable datagrams support.
   See [PR 6489](https://github.com/libp2p/rust-libp2p/pull/6489).
 
 - Route inbound datagrams centrally: add `ConnectionHandler::supports_datagrams` and a `stream_id` field on `FullyNegotiatedInbound`/`FullyNegotiatedOutbound`. The connection parses the control-stream id once and routes each datagram to the owning handler instead of broadcasting.

@@ -1,9 +1,6 @@
 ## 0.44.0
 
-- Add unreliable datagram support to `StreamMuxer`: `send_datagram`, `max_datagram_size`, and `StreamMuxerEvent::Datagram`. Unsupported muxers return `SendDatagramError::Unsupported`.
-  See [PR 6489](https://github.com/libp2p/rust-libp2p/pull/6489).
-
-- Add `StreamMuxer::substream_id` and `SubstreamBox::transport_stream_id`, surfacing transport stream ids (QUIC) for datagram flows. `SubstreamBox::new` now takes the id.
+- Add unreliable datagrams support.
   See [PR 6489](https://github.com/libp2p/rust-libp2p/pull/6489).
 
 - Raise MSRV to 1.88.0.
