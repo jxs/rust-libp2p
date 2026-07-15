@@ -2987,22 +2987,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "libp2p-datagram"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "futures",
- "libp2p-core",
- "libp2p-identity",
- "libp2p-quic",
- "libp2p-swarm",
- "thiserror 2.0.18",
- "tokio",
- "tracing-subscriber",
- "unsigned-varint",
-]
-
-[[package]]
 name = "libp2p-dcutr"
 version = "0.15.0"
 dependencies = [
@@ -6947,8 +6931,6 @@ checksum = "eb066959b24b5196ae73cb057f45598450d2c5f71460e98c49b738086eff9c06"
 dependencies = [
  "asynchronous-codec",
  "bytes",
- "futures-io",
- "futures-util",
 ]
 
 [[package]]
